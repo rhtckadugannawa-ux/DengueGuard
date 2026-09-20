@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Health Officer Portal - Dengue Surveillance</title>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css">
+  <style>
+    body { background-color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; }
+    .navbar { flex-wrap: wrap; row-gap: .4rem; }
+    .navbar .navbar-brand { white-space: normal; }
+    @media (max-width: 400px) { .navbar .portal-tag { display: none; } }
+  </style>
+</head>
+<body>
+
+  <nav class="navbar navbar-dark bg-dark shadow-sm">
+    <div class="container-fluid px-4">
+      <span class="navbar-brand fw-bold mb-0"><i class="bi bi-shield-shaded text-danger me-2"></i>DengueGuard <span class="fw-normal text-white-50 portal-tag">&middot; Health Officer</span></span>
+      <span id="dbStatus" class="badge rounded-pill text-bg-secondary">Connecting...</span>
+    </div>
+  </nav>
+
+  <div class="container py-4">
+    <div id="riskPanel" class="mb-4"></div>
+    <div class="row g-4">
+      <div class="col-lg-5">
+        <div class="card border-0 shadow-sm">
+          <div class="card-header bg-white py-3">
+            <h5 class="fw-bold mb-0 text-primary"><i class="bi bi-hospital me-2"></i>Health Officer Activity Entry</h5>
+          </div>
+          <div class="card-body">
+            <form id="healthForm">
+              <div class="mb-3">
+                <label class="form-label fw-semibold" for="actDate">Date</label>
+                <input type="date" id="actDate" class="form-control" required>
+              </div>
+              <div class="mb-3">
+                <label class="form-label fw-semibold" for="actGN">GN Division</label>
+                <select id="actGN" class="form-select" required data-gn data-placeholder="Type to search GN division..."><option value="">Select Division</option></select>
+              </div>
+              <div class="mb-3">
+                <label class="form-label fw-semibold" for="actOfficer">Entered By (Officer)</label>
+                <div class="d-flex gap-2">
+                  <div class="flex-grow-1"><select id="actOfficer" class="form-select" required data-officer data-roles="Health" data-placeholder="Select officer..."><option value="">Select Officer</option></select></div>
+                  <button type="button" class="btn btn-outline-secondary" title="Add new officer" onclick="DG.addOfficerPrompt('Health', 'actOfficer')"><i class="bi bi-person-plus"></i></button>
+                </div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label fw-semibold" for="actType">Intervention Type</label>
+                <div class="d-flex gap-2">
+                  <div class="flex-grow-1">
+                    <select id="actType" class="form-select" data-acttype="Health">
+                      <option value="Premises Inspection">Premises Inspection</option>
+                      <option value="Larvae Positive Sites Identified">Larvae Positive Sites Identified</option>
+                      <option value="Red Notice Issued">Red Notice Issued</option>
+                      <option value="Fogging / Space Spraying">Fogging / Space Spraying</option>
+                      <option value="Larval Survey">Larval Survey</option>
+                      <option value="Adult Mosquito Survey">Adult Mosquito Survey</option>
+                      <option value="Thermal Fogging">Thermal Fogging</option>
+                      <option value="Cold Fogging">Cold Fogging</option>
+                      <option value="Larviciding (Chemical Spraying)">Larviciding (Chemical Spraying)</option>
+                      <option value="Notice Issued">Notice Issued</option>
+                      <option value="Prosecuted / Legal Action">Prosecuted / Legal Action</option>
+                      <option value="Community Awareness Programme">Community Awareness Programme</option>
+                    </select>
+                  </div>
+                  <button type="button" class="btn btn-outline-secondary" title="Add new intervention type" onclick="DG.addActivityPrompt('Health', 'actType')"><i class="bi bi-plus-lg"></i></button>
+                </div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label fw-semibold" for="actCount">Count / Units</label>
+                <input type="number" id="actCount" class="form-control" min="1" value="10" required>
+              </div>
+              <div class="mb-3">
+                <label class="form-label fw-semibold" for="actLarvae">Larvae-positive sites found <span class="text-muted fw-normal">(optional)</span></label>
+                <input type="number" id="actLarvae" class="form-control" min="0" placeholder="0">
+              </div>
+              <div class="mb-3">
+                <label class="form-label fw-semibold" for="actNotes">Notes <span class="text-muted fw-normal">(optional)</span></label>
+                <input type="text" id="actNotes" class="form-control" maxlength="120">
+              </div>
+              <button type="submit" class="btn btn-primary w-100 py-2 fw-semibold">Submit Activity</button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-7">
+        <div class="card border-0 shadow-sm">
+          <div class="card-header bg-white py-3">
+            <h5 class="fw-bold mb-0">Health Activities Log</h5>
+          </div>
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>Date</th>
+                    <th>GN Division</th>
+                    <th>Activity</th>
+                    <th>Count</th>
+                    <th>Officer</th>
+                  </tr>
+                </thead>
+                <tbody id="healthTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="common.js"></script>
+  <script>
+    document.getElementById('actDate').value = DG.dateStr();
+    document.getElementById('actDate').max = DG.dateStr();   // no future dates
+
+    const sessionIds = new Set();   // only records entered during THIS visit are shown here (full history is on the main dashboard)
+
+    function loadHealthActivities() {
+      const rows = DG.db.acts().filter(r => r.officerType === 'Health' && sessionIds.has(r.id));
+      const tbody = document.getElementById('healthTableBody');
+      if (rows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-muted">No records entered yet this session.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = rows.slice(0, 200).map(r => `
+        <tr>
+          <td class="text-nowrap">${DG.esc(r.date)}</td>
+          <td class="fw-semibold">${DG.esc(r.gnArea)}</td>
+          <td>${DG.esc(r.activity)}</td>
+          <td><span class="badge bg-primary">${DG.esc(r.count)}</span></td>
+          <td class="small">${DG.esc(r.officerName || '-')}</td>
+        </tr>`).join('');
+    }
+
+    document.getElementById('healthForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const off = DG.officer(document.getElementById('actOfficer').value);
+      const saved = DG.db.add('activities', {
+        date: document.getElementById('actDate').value,
+        gnArea: document.getElementById('actGN').value,
+        officerType: 'Health',
+        activity: document.getElementById('actType').value,
+        count: Number(document.getElementById('actCount').value),
+        officerId: off.id,
+        officerName: off.name,
+        inspected: ['Premises Inspection', 'Larval Survey'].includes(document.getElementById('actType').value) ? Number(document.getElementById('actCount').value) : null,
+        larvae: Number(document.getElementById('actLarvae').value || 0),
+        notes: document.getElementById('actNotes').value.trim()
+      });
+      if (!saved) return;   // not connected: keep what was typed
+      sessionIds.add(saved);
+      e.target.reset();
+      document.getElementById('actDate').value = DG.dateStr();
+    });
+
+    DG.onData(loadHealthActivities);
+  </script>
+</body>
+</html>

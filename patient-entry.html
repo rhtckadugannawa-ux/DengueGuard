@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Daily Patient Entry - Dengue Surveillance</title>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css">
+  <style>body { background-color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; }</style>
+</head>
+<body>
+
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top shadow-sm">
+    <div class="container-fluid px-4">
+      <a class="navbar-brand fw-bold" href="index.html"><i class="bi bi-shield-shaded text-danger me-2"></i>DengueGuard</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation"><span class="navbar-toggler-icon"></span></button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav ms-auto">
+          <li class="nav-item"><a class="nav-link" href="index.html">Main Dashboard</a></li>
+          <li class="nav-item"><a class="nav-link active" href="patient-entry.html">Daily Patient Entry</a></li>
+          <li class="nav-item"><a class="nav-link" href="health-officer.html">Health Officer Portal</a></li>
+          <li class="nav-item"><a class="nav-link" href="field-officer.html">Other Field Officer</a></li>
+        <li class="nav-item ms-lg-3"><span id="dbStatus" class="badge rounded-pill text-bg-secondary">Connecting...</span></li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container py-4">
+    <div class="row g-4">
+      <div class="col-lg-5">
+        <div class="card border-0 shadow-sm">
+          <div class="card-header bg-white py-3">
+            <h5 class="fw-bold mb-0 text-danger"><i class="bi bi-person-plus-fill me-2"></i>Log Daily Dengue Case</h5>
+          </div>
+          <div class="card-body">
+            <form id="patientForm">
+              <div class="mb-3">
+                <label class="form-label fw-semibold" for="entryDate">Notification Date</label>
+                <input type="date" id="entryDate" class="form-control" required>
+              </div>
+              <div class="mb-3">
+                <label class="form-label fw-semibold" for="entryGN">GN Division</label>
+                <select id="entryGN" class="form-select" required data-gn data-placeholder="Type to search GN division..."><option value="">Select Division</option></select>
+              </div>
+              <div class="mb-3">
+                <label class="form-label fw-semibold" for="entryOfficer">Entered By (Officer)</label>
+                <div class="d-flex gap-2">
+                  <div class="flex-grow-1"><select id="entryOfficer" class="form-select" required data-officer data-roles="*" data-placeholder="Select officer..."><option value="">Select Officer</option></select></div>
+                  <button type="button" class="btn btn-outline-secondary" title="Add new officer" onclick="DG.addOfficerPrompt('Clerk', 'entryOfficer')"><i class="bi bi-person-plus"></i></button>
+                </div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label fw-semibold" for="entryCount">Patient Count</label>
+                <input type="number" id="entryCount" class="form-control" min="1" value="1" required>
+              </div>
+              <div class="mb-3">
+                <label class="form-label fw-semibold" for="entrySeverity">Diagnosis Severity</label>
+                <select id="entrySeverity" class="form-select">
+                  <option value="DF">Dengue Fever (DF)</option>
+                  <option value="DHF">Dengue Haemorrhagic Fever (DHF)</option>
+                </select>
+              </div>
+              <button type="submit" class="btn btn-danger w-100 py-2 fw-semibold">Save to Live Registry</button>
+            </form>
+          </div>
+        </div>
+        <div id="riskPanel" class="mt-4"></div>
+      </div>
+
+      <div class="col-lg-7">
+        <div class="card border-0 shadow-sm">
+          <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+            <h5 class="fw-bold mb-0">Patient Notification Registry</h5>
+            <span class="badge bg-secondary" id="totalRecordsBadge">0 Logs</span>
+          </div>
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>Date</th>
+                    <th>GN Division</th>
+                    <th>Count</th>
+                    <th>Severity</th>
+                    <th>Entered By</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="casesTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="common.js"></script>
+  <script>
+    document.getElementById('entryDate').value = DG.dateStr();
+    document.getElementById('entryDate').max = DG.dateStr();   // no future dates
+
+    function loadCases() {
+      const records = DG.db.cases();
+      document.getElementById('totalRecordsBadge').innerText = `${records.length} Logs`;
+      const tbody = document.getElementById('casesTableBody');
+      if (records.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted">No records registered.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = records.slice(0, 200).map(r => `
+        <tr>
+          <td class="text-nowrap">${DG.esc(r.date)}</td>
+          <td class="fw-semibold">${DG.esc(r.gnArea)}</td>
+          <td><span class="badge bg-danger">${DG.esc(r.count)}</span></td>
+          <td><span class="badge bg-light text-dark border">${DG.esc(r.severity)}</span></td>
+          <td class="small">${DG.esc(r.officerName || '-')}</td>
+          <td><button class="btn btn-sm btn-outline-danger" data-del="${DG.esc(r.id)}"><i class="bi bi-trash"></i></button></td>
+        </tr>`).join('');
+    }
+
+    document.getElementById('casesTableBody').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-del]');
+      if (b && confirm('Are you sure you want to delete this record?')) DG.db.remove('cases', b.dataset.del);
+    });
+
+    document.getElementById('patientForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const off = DG.officer(document.getElementById('entryOfficer').value);
+      const saved = DG.db.add('cases', {
+        date: document.getElementById('entryDate').value,
+        gnArea: document.getElementById('entryGN').value,
+        count: Number(document.getElementById('entryCount').value),
+        severity: document.getElementById('entrySeverity').value,
+        officerId: off.id,
+        officerName: off.name
+      });
+      if (!saved) return;   // not connected: keep what was typed
+      e.target.reset();
+      document.getElementById('entryDate').value = DG.dateStr();
+    });
+
+    DG.onData(loadCases);
+  </script>
+</body>
+</html>

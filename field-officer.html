@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Community Field Officer Portal - Dengue Surveillance</title>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css">
+  <style>
+    body { background-color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; }
+    .navbar { flex-wrap: wrap; row-gap: .4rem; }
+    .navbar .navbar-brand { white-space: normal; }
+    @media (max-width: 400px) { .navbar .portal-tag { display: none; } }
+  </style>
+</head>
+<body>
+
+  <nav class="navbar navbar-dark bg-dark shadow-sm">
+    <div class="container-fluid px-4">
+      <span class="navbar-brand fw-bold mb-0"><i class="bi bi-shield-shaded text-danger me-2"></i>DengueGuard <span class="fw-normal text-white-50 portal-tag">&middot; Community Field Officer</span></span>
+      <span id="dbStatus" class="badge rounded-pill text-bg-secondary">Connecting...</span>
+    </div>
+  </nav>
+
+  <div class="container py-4">
+    <div id="riskPanel" class="mb-4"></div>
+    <div class="row g-4">
+      <div class="col-lg-5">
+        <div class="card border-0 shadow-sm">
+          <div class="card-header bg-white py-3">
+            <h5 class="fw-bold mb-0 text-success"><i class="bi bi-people me-2"></i>Community Action Entry</h5>
+          </div>
+          <div class="card-body">
+            <form id="fieldForm">
+              <div class="mb-3">
+                <label class="form-label fw-semibold" for="fDate">Date</label>
+                <input type="date" id="fDate" class="form-control" required>
+              </div>
+              <div class="mb-3">
+                <label class="form-label fw-semibold" for="fGN">GN Division</label>
+                <select id="fGN" class="form-select" required data-gn data-placeholder="Type to search GN division..."><option value="">Select Division</option></select>
+              </div>
+              <div class="mb-3">
+                <label class="form-label fw-semibold" for="fOfficer">Entered By (Officer)</label>
+                <div class="d-flex gap-2">
+                  <div class="flex-grow-1"><select id="fOfficer" class="form-select" required data-officer data-roles="Community" data-placeholder="Select officer..."><option value="">Select Officer</option></select></div>
+                  <button type="button" class="btn btn-outline-secondary" title="Add new officer" onclick="DG.addOfficerPrompt('Community', 'fOfficer')"><i class="bi bi-person-plus"></i></button>
+                </div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label fw-semibold" for="fType">Community Activity</label>
+                <div class="d-flex gap-2">
+                  <div class="flex-grow-1">
+                    <select id="fType" class="form-select" data-acttype="Community">
+                      <option value="Shramadana Waste Clearing">Shramadana Waste Clearing</option>
+                      <option value="Drainage Unclogging Drive">Drainage Unclogging Drive</option>
+                      <option value="Vacant Land Inspection">Vacant Land Inspection</option>
+                      <option value="Community Awareness">Community Awareness</option>
+                      <option value="Larval Survey">Larval Survey</option>
+                      <option value="Adult Mosquito Survey">Adult Mosquito Survey</option>
+                      <option value="Thermal Fogging">Thermal Fogging</option>
+                      <option value="Cold Fogging">Cold Fogging</option>
+                      <option value="Larviciding (Chemical Spraying)">Larviciding (Chemical Spraying)</option>
+                      <option value="Notice Issued">Notice Issued</option>
+                      <option value="Prosecuted / Legal Action">Prosecuted / Legal Action</option>
+                    </select>
+                  </div>
+                  <button type="button" class="btn btn-outline-secondary" title="Add new community activity" onclick="DG.addActivityPrompt('Community', 'fType')"><i class="bi bi-plus-lg"></i></button>
+                </div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label fw-semibold" for="fCount">Units / Participants</label>
+                <input type="number" id="fCount" class="form-control" min="1" value="20" required>
+              </div>
+              <div class="mb-3">
+                <label class="form-label fw-semibold" for="fNotes">Notes <span class="text-muted fw-normal">(optional)</span></label>
+                <input type="text" id="fNotes" class="form-control" maxlength="120">
+              </div>
+              <button type="submit" class="btn btn-success w-100 py-2 fw-semibold">Submit Community Record</button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-7">
+        <div class="card border-0 shadow-sm">
+          <div class="card-header bg-white py-3">
+            <h5 class="fw-bold mb-0">Community Operations Log</h5>
+          </div>
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>Date</th>
+                    <th>GN Division</th>
+                    <th>Task</th>
+                    <th>Units</th>
+                    <th>Officer</th>
+                  </tr>
+                </thead>
+                <tbody id="fieldTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="common.js"></script>
+  <script>
+    document.getElementById('fDate').value = DG.dateStr();
+    document.getElementById('fDate').max = DG.dateStr();   // no future dates
+
+    const sessionIds = new Set();   // only records entered during THIS visit are shown here (full history is on the main dashboard)
+
+    function loadFieldActivities() {
+      const rows = DG.db.acts().filter(r => r.officerType === 'Community' && sessionIds.has(r.id));
+      const tbody = document.getElementById('fieldTableBody');
+      if (rows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-muted">No records entered yet this session.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = rows.slice(0, 200).map(r => `
+        <tr>
+          <td class="text-nowrap">${DG.esc(r.date)}</td>
+          <td class="fw-semibold">${DG.esc(r.gnArea)}</td>
+          <td>${DG.esc(r.activity)}</td>
+          <td><span class="badge bg-success">${DG.esc(r.count)}</span></td>
+          <td class="small">${DG.esc(r.officerName || '-')}</td>
+        </tr>`).join('');
+    }
+
+    document.getElementById('fieldForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const off = DG.officer(document.getElementById('fOfficer').value);
+      const saved = DG.db.add('activities', {
+        date: document.getElementById('fDate').value,
+        gnArea: document.getElementById('fGN').value,
+        officerType: 'Community',
+        activity: document.getElementById('fType').value,
+        count: Number(document.getElementById('fCount').value),
+        officerId: off.id,
+        officerName: off.name,
+        notes: document.getElementById('fNotes').value.trim()
+      });
+      if (!saved) return;   // not connected: keep what was typed
+      sessionIds.add(saved);
+      e.target.reset();
+      document.getElementById('fDate').value = DG.dateStr();
+    });
+
+
+    DG.onData(loadFieldActivities);
+  </script>
+</body>
+</html>
