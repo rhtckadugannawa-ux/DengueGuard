@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Community Field Officer Portal - Dengue Surveillance</title>
+  <title>Community Field Officer Portal - Dengue Surveillance / ප්‍රජා ක්ෂේත්‍ර නිලධාරී ද්වාරය - ඩෙංගු නිරීක්ෂණ</title>
   <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css">
   <style>
@@ -17,8 +17,8 @@
 
   <nav class="navbar navbar-dark bg-dark shadow-sm">
     <div class="container-fluid px-4">
-      <span class="navbar-brand fw-bold mb-0"><i class="bi bi-shield-shaded text-danger me-2"></i>DengueGuard <span class="fw-normal text-white-50 portal-tag">&middot; Community Field Officer</span></span>
-      <span id="dbStatus" class="badge rounded-pill text-bg-secondary">Connecting...</span>
+      <span class="navbar-brand fw-bold mb-0"><i class="bi bi-shield-shaded text-danger me-2"></i>DengueGuard / ඩෙංගු ගාඩ් <span class="fw-normal text-white-50 portal-tag">&middot; Community Field Officer / ප්‍රජා ක්ෂේත්‍ර නිලධාරී</span></span>
+      <span id="dbStatus" class="badge rounded-pill text-bg-secondary">Connecting... / සම්බන්ධ වෙමින් පවතී...</span>
     </div>
   </nav>
 
@@ -28,55 +28,55 @@
       <div class="col-lg-5">
         <div class="card border-0 shadow-sm">
           <div class="card-header bg-white py-3">
-            <h5 class="fw-bold mb-0 text-success"><i class="bi bi-people me-2"></i>Community Action Entry</h5>
+            <h5 class="fw-bold mb-0 text-success"><i class="bi bi-people me-2"></i>Community Action Entry / ප්‍රජා ක්‍රියාකාරකම් ඇතුළත් කිරීම</h5>
           </div>
           <div class="card-body">
             <form id="fieldForm">
               <div class="mb-3">
-                <label class="form-label fw-semibold" for="fDate">Date</label>
+                <label class="form-label fw-semibold" for="fDate">Date / දිනය</label>
                 <input type="date" id="fDate" class="form-control" required>
               </div>
               <div class="mb-3">
-                <label class="form-label fw-semibold" for="fGN">GN Division</label>
-                <select id="fGN" class="form-select" required data-gn data-placeholder="Type to search GN division..."><option value="">Select Division</option></select>
+                <label class="form-label fw-semibold" for="fGN">GN Division / ග්‍රාම නිලධාරී වසම</label>
+                <select id="fGN" class="form-select" required data-gn data-placeholder="Type to search GN division... / ග්‍රාම නිලධාරී වසම සෙවීමට ටයිප් කරන්න..."><option value="">Select Division / වසම තෝරන්න</option></select>
               </div>
               <div class="mb-3">
-                <label class="form-label fw-semibold" for="fOfficer">Entered By (Officer)</label>
+                <label class="form-label fw-semibold" for="fOfficer">Entered By (Officer) / ඇතුළත් කළේ (නිලධාරී)</label>
                 <div class="d-flex gap-2">
-                  <div class="flex-grow-1"><select id="fOfficer" class="form-select" required data-officer data-roles="Community" data-placeholder="Select officer..."><option value="">Select Officer</option></select></div>
-                  <button type="button" class="btn btn-outline-secondary" title="Add new officer" onclick="DG.addOfficerPrompt('Community', 'fOfficer')"><i class="bi bi-person-plus"></i></button>
+                  <div class="flex-grow-1"><select id="fOfficer" class="form-select" required data-officer data-roles="Community" data-placeholder="Select officer... / නිලධාරියා තෝරන්න..."><option value="">Select Officer / නිලධාරියා තෝරන්න</option></select></div>
+                  <button type="button" class="btn btn-outline-secondary" title="Add new officer / නව නිලධාරියෙකු එක් කරන්න" onclick="DG.addOfficerPrompt('Community', 'fOfficer')"><i class="bi bi-person-plus"></i></button>
                 </div>
               </div>
               <div class="mb-3">
-                <label class="form-label fw-semibold" for="fType">Community Activity</label>
+                <label class="form-label fw-semibold" for="fType">Community Activity / ප්‍රජා ක්‍රියාකාරකම</label>
                 <div class="d-flex gap-2">
                   <div class="flex-grow-1">
                     <select id="fType" class="form-select" data-acttype="Community">
-                      <option value="Shramadana Waste Clearing">Shramadana Waste Clearing</option>
-                      <option value="Drainage Unclogging Drive">Drainage Unclogging Drive</option>
-                      <option value="Vacant Land Inspection">Vacant Land Inspection</option>
-                      <option value="Community Awareness">Community Awareness</option>
-                      <option value="Larval Survey">Larval Survey</option>
-                      <option value="Adult Mosquito Survey">Adult Mosquito Survey</option>
-                      <option value="Thermal Fogging">Thermal Fogging</option>
-                      <option value="Cold Fogging">Cold Fogging</option>
-                      <option value="Larviciding (Chemical Spraying)">Larviciding (Chemical Spraying)</option>
-                      <option value="Notice Issued">Notice Issued</option>
-                      <option value="Prosecuted / Legal Action">Prosecuted / Legal Action</option>
+                      <option value="Shramadana Waste Clearing">Shramadana Waste Clearing / ශ්‍රමදාන කසළ ඉවත් කිරීම</option>
+                      <option value="Drainage Unclogging Drive">Drainage Unclogging Drive / කාණු පිරිසිදු කිරීමේ වැඩසටහන</option>
+                      <option value="Vacant Land Inspection">Vacant Land Inspection / හිස් ඉඩම් පරීක්ෂාව</option>
+                      <option value="Community Awareness">Community Awareness / ප්‍රජාව දැනුවත් කිරීම</option>
+                      <option value="Larval Survey">Larval Survey / කීට සමීක්ෂණය</option>
+                      <option value="Adult Mosquito Survey">Adult Mosquito Survey / වැඩිහිටි මදුරු සමීක්ෂණය</option>
+                      <option value="Thermal Fogging">Thermal Fogging / තාප දුමායනය</option>
+                      <option value="Cold Fogging">Cold Fogging / ශීත දුමායනය</option>
+                      <option value="Larviciding (Chemical Spraying)">Larviciding (Chemical Spraying) / කීට නාශක යෙදීම (රසායනික ඉසීම)</option>
+                      <option value="Notice Issued">Notice Issued / නිවේදන නිකුත් කිරීම</option>
+                      <option value="Prosecuted / Legal Action">Prosecuted / Legal Action / නඩු පැවරීම / නීතිමය පියවර</option>
                     </select>
                   </div>
-                  <button type="button" class="btn btn-outline-secondary" title="Add new community activity" onclick="DG.addActivityPrompt('Community', 'fType')"><i class="bi bi-plus-lg"></i></button>
+                  <button type="button" class="btn btn-outline-secondary" title="Add new community activity / නව ප්‍රජා ක්‍රියාකාරකමක් එක් කරන්න" onclick="DG.addActivityPrompt('Community', 'fType')"><i class="bi bi-plus-lg"></i></button>
                 </div>
               </div>
               <div class="mb-3">
-                <label class="form-label fw-semibold" for="fCount">Units / Participants</label>
+                <label class="form-label fw-semibold" for="fCount">Units / Participants / ඒකක / සහභාගිවන්නන්</label>
                 <input type="number" id="fCount" class="form-control" min="1" value="20" required>
               </div>
               <div class="mb-3">
-                <label class="form-label fw-semibold" for="fNotes">Notes <span class="text-muted fw-normal">(optional)</span></label>
+                <label class="form-label fw-semibold" for="fNotes">Notes / සටහන් <span class="text-muted fw-normal">(optional / විකල්ප)</span></label>
                 <input type="text" id="fNotes" class="form-control" maxlength="120">
               </div>
-              <button type="submit" class="btn btn-success w-100 py-2 fw-semibold">Submit Community Record</button>
+              <button type="submit" class="btn btn-success w-100 py-2 fw-semibold">Submit Community Record / ප්‍රජා වාර්තාව යොමු කරන්න</button>
             </form>
           </div>
         </div>
@@ -85,18 +85,18 @@
       <div class="col-lg-7">
         <div class="card border-0 shadow-sm">
           <div class="card-header bg-white py-3">
-            <h5 class="fw-bold mb-0">Community Operations Log</h5>
+            <h5 class="fw-bold mb-0">Community Operations Log / ප්‍රජා මෙහෙයුම් ලොගය</h5>
           </div>
           <div class="card-body p-0">
             <div class="table-responsive">
               <table class="table table-hover align-middle mb-0">
                 <thead class="table-light">
                   <tr>
-                    <th>Date</th>
-                    <th>GN Division</th>
-                    <th>Task</th>
-                    <th>Units</th>
-                    <th>Officer</th>
+                    <th>Date / දිනය</th>
+                    <th>GN Division / ග්‍රාම නිලධාරී වසම</th>
+                    <th>Task / කාර්යය</th>
+                    <th>Units / ඒකක</th>
+                    <th>Officer / නිලධාරී</th>
                   </tr>
                 </thead>
                 <tbody id="fieldTableBody"></tbody>
@@ -123,7 +123,7 @@
       const rows = DG.db.acts().filter(r => r.officerType === 'Community' && sessionIds.has(r.id));
       const tbody = document.getElementById('fieldTableBody');
       if (rows.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-muted">No records entered yet this session.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-muted">No records entered yet this session. / මෙම සැසියේ මෙතෙක් කිසිදු වාර්තාවක් ඇතුළත් කර නොමැත.</td></tr>';
         return;
       }
       tbody.innerHTML = rows.slice(0, 200).map(r => `
@@ -154,7 +154,6 @@
       e.target.reset();
       document.getElementById('fDate').value = DG.dateStr();
     });
-
 
     DG.onData(loadFieldActivities);
   </script>
