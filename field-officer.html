@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Community Field Officer Portal - Dengue Surveillance / ප්‍රජා ක්ෂේත්‍ර නිලධාරී ද්වාරය - ඩෙංගු නිරීක්ෂණ</title>
+  <title>Community Field Officer Portal - Dengue Surveillance / ප්‍රජා / ක්ෂේත්‍ර නිලධාරී ද්වාරය </title>
   <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css">
   <style>
@@ -17,7 +17,7 @@
 
   <nav class="navbar navbar-dark bg-dark shadow-sm">
     <div class="container-fluid px-4">
-      <span class="navbar-brand fw-bold mb-0"><i class="bi bi-shield-shaded text-danger me-2"></i>DengueGuard / ඩෙංගු ගාඩ් <span class="fw-normal text-white-50 portal-tag">&middot; Community Field Officer / ප්‍රජා ක්ෂේත්‍ර නිලධාරී</span></span>
+      <span class="navbar-brand fw-bold mb-0"><i class="bi bi-shield-shaded text-danger me-2"></i>DengueGuard<span class="fw-normal text-white-50 portal-tag">&middot; Community Field Officer / ප්‍රජා ක්ෂේත්‍ර නිලධාරී</span></span>
       <span id="dbStatus" class="badge rounded-pill text-bg-secondary">Connecting... / සම්බන්ධ වෙමින් පවතී...</span>
     </div>
   </nav>
@@ -69,22 +69,22 @@
                 </div>
               </div>
               <div class="mb-3">
-                <label class="form-label fw-semibold" for="fCount">Units / Participants / ඒකක / සහභාගිවන්නන්</label>
+                <label class="form-label fw-semibold" for="fCount">Units/Premises Examined / පරික්ෂා කල පරිශ්‍ර/ඒකක ගණන</label>
                 <input type="number" id="fCount" class="form-control" min="1" value="20" required>
               </div>
               <div class="mb-3">
-                <label class="form-label fw-semibold" for="fLarvae">Larvae-positive sites found / කීට ධනාත්මක ස්ථාන ගණන <span class="text-muted fw-normal">(optional / විකල්ප)</span></label>
+                <label class="form-label fw-semibold" for="fLarvae">Larvae-positive sites found / කීටයන සහිත ස්ථාන ගණන <span class="text-muted fw-normal">(optional / විකල්ප)</span></label>
                 <input type="number" id="fLarvae" class="form-control" min="0" placeholder="0">
               </div>
               <div class="mb-3">
-                <label class="form-label fw-semibold" for="fBreeding">Potential Breeding Sites Count / විය හැකි අභිජනන ස්ථාන ගණන <span class="text-muted fw-normal">(optional / විකල්ප)</span></label>
+                <label class="form-label fw-semibold" for="fBreeding">Potential Breeding Sites Count / මදුරුවන්වි බෝවිය හැකි ස්ථාන ගණන <span class="text-muted fw-normal">(optional / විකල්ප)</span></label>
                 <input type="number" id="fBreeding" class="form-control" min="0" placeholder="0">
               </div>
               <div class="mb-3">
                 <label class="form-label fw-semibold" for="fNotes">Notes / සටහන් <span class="text-muted fw-normal">(optional / විකල්ප)</span></label>
                 <input type="text" id="fNotes" class="form-control" maxlength="120">
               </div>
-              <button type="submit" class="btn btn-success w-100 py-2 fw-semibold">Submit Community Record / ප්‍රජා වාර්තාව යොමු කරන්න</button>
+              <button type="submit" class="btn btn-success w-100 py-2 fw-semibold">Submit Community Record / වාර්තාව යොමු කරන්න</button>
             </form>
           </div>
         </div>
