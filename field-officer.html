@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Community/Field Officer Portal , ප්‍රජා/ක්ෂේත්‍ර නිලධාරී ද්වාරය </title>
+  <title>Community Field Officer Portal - Dengue Surveillance / ප්‍රජා ක්ෂේත්‍ර නිලධාරී ද්වාරය - ඩෙංගු නිරීක්ෂණ</title>
   <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css">
   <style>
@@ -73,6 +73,14 @@
                 <input type="number" id="fCount" class="form-control" min="1" value="20" required>
               </div>
               <div class="mb-3">
+                <label class="form-label fw-semibold" for="fLarvae">Larvae-positive sites found / කීට ධනාත්මක ස්ථාන ගණන <span class="text-muted fw-normal">(optional / විකල්ප)</span></label>
+                <input type="number" id="fLarvae" class="form-control" min="0" placeholder="0">
+              </div>
+              <div class="mb-3">
+                <label class="form-label fw-semibold" for="fBreeding">Potential Breeding Sites Count / විය හැකි අභිජනන ස්ථාන ගණන <span class="text-muted fw-normal">(optional / විකල්ප)</span></label>
+                <input type="number" id="fBreeding" class="form-control" min="0" placeholder="0">
+              </div>
+              <div class="mb-3">
                 <label class="form-label fw-semibold" for="fNotes">Notes / සටහන් <span class="text-muted fw-normal">(optional / විකල්ප)</span></label>
                 <input type="text" id="fNotes" class="form-control" maxlength="120">
               </div>
@@ -132,7 +140,7 @@
           <td class="fw-semibold">${DG.esc(r.gnArea)}</td>
           <td>${DG.esc(r.activity)}</td>
           <td><span class="badge bg-success">${DG.esc(r.count)}</span></td>
-          <td class="small">${DG.esc(r.officerName || '-')}</td>
+          <td class="small">${DG.esc(r.officerName || '-')}${(r.larvae || r.breedingSites) ? `<div class="text-muted">${r.larvae ? DG.esc(r.larvae) + ' larvae+' : ''}${r.larvae && r.breedingSites ? ', ' : ''}${r.breedingSites ? DG.esc(r.breedingSites) + ' breeding sites' : ''}</div>` : ''}</td>
         </tr>`).join('');
     }
 
@@ -147,6 +155,8 @@
         count: Number(document.getElementById('fCount').value),
         officerId: off.id,
         officerName: off.name,
+        larvae: Number(document.getElementById('fLarvae').value || 0),
+        breedingSites: Number(document.getElementById('fBreeding').value || 0),
         notes: document.getElementById('fNotes').value.trim()
       });
       if (!saved) return;   // not connected: keep what was typed

@@ -78,6 +78,10 @@
                 <input type="number" id="actLarvae" class="form-control" min="0" placeholder="0">
               </div>
               <div class="mb-3">
+                <label class="form-label fw-semibold" for="actBreeding">Potential Breeding Sites Count <span class="text-muted fw-normal">(optional)</span></label>
+                <input type="number" id="actBreeding" class="form-control" min="0" placeholder="0">
+              </div>
+              <div class="mb-3">
                 <label class="form-label fw-semibold" for="actNotes">Notes <span class="text-muted fw-normal">(optional)</span></label>
                 <input type="text" id="actNotes" class="form-control" maxlength="120">
               </div>
@@ -137,7 +141,7 @@
           <td class="fw-semibold">${DG.esc(r.gnArea)}</td>
           <td>${DG.esc(r.activity)}</td>
           <td><span class="badge bg-primary">${DG.esc(r.count)}</span></td>
-          <td class="small">${DG.esc(r.officerName || '-')}</td>
+          <td class="small">${DG.esc(r.officerName || '-')}${(r.larvae || r.breedingSites) ? `<div class="text-muted">${r.larvae ? DG.esc(r.larvae) + ' larvae+' : ''}${r.larvae && r.breedingSites ? ', ' : ''}${r.breedingSites ? DG.esc(r.breedingSites) + ' breeding sites' : ''}</div>` : ''}</td>
         </tr>`).join('');
     }
 
@@ -154,6 +158,7 @@
         officerName: off.name,
         inspected: ['Premises Inspection', 'Larval Survey'].includes(document.getElementById('actType').value) ? Number(document.getElementById('actCount').value) : null,
         larvae: Number(document.getElementById('actLarvae').value || 0),
+        breedingSites: Number(document.getElementById('actBreeding').value || 0),
         notes: document.getElementById('actNotes').value.trim()
       });
       if (!saved) return;   // not connected: keep what was typed

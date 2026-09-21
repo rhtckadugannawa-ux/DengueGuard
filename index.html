@@ -86,6 +86,10 @@
         <div class="text-muted small fw-bold">HIGH RISK (RED ZONES)</div><div class="h2 fw-bold text-danger mb-0" id="statRed">0</div><small class="text-danger" id="statRedNote">&ge; 5 cases in 7 days</small></div></div>
       <div class="col-6 col-lg-3"><div class="card stat-card border-0 shadow-sm p-3 border-bottom border-success border-3">
         <div class="text-muted small fw-bold" id="statActsLabel">FIELD ACTIVITIES (7 DAYS)</div><div class="h2 fw-bold text-success mb-0" id="statActs">0</div><small class="text-muted">Inspections, fogging &amp; cleanups</small></div></div>
+      <div class="col-6 col-lg-3"><div class="card stat-card border-0 shadow-sm p-3 border-bottom border-warning border-3">
+        <div class="text-muted small fw-bold" id="statLarvaeLabel">LARVAE-POSITIVE SITES</div><div class="h2 fw-bold text-warning mb-0" id="statLarvaeFound">0</div><small class="text-muted" id="statLarvaeNote">Found this period</small></div></div>
+      <div class="col-6 col-lg-3"><div class="card stat-card border-0 shadow-sm p-3 border-bottom border-info border-3">
+        <div class="text-muted small fw-bold" id="statBreedingLabel">POTENTIAL BREEDING SITES</div><div class="h2 fw-bold text-info mb-0" id="statBreeding">0</div><small class="text-muted" id="statBreedingNote">Identified this period</small></div></div>
     </div>
 
     <div class="row row-cols-2 row-cols-md-3 row-cols-xl-5 g-3 mb-4" id="actionBoxes"></div>
@@ -177,6 +181,10 @@
             <div class="mb-3" id="editActLarvaeWrap">
               <label class="form-label fw-semibold" for="editActLarvae">Larvae-positive sites <span class="text-muted fw-normal">(optional)</span></label>
               <input type="number" id="editActLarvae" class="form-control" min="0">
+            </div>
+            <div class="mb-3" id="editActBreedingWrap">
+              <label class="form-label fw-semibold" for="editActBreeding">Potential breeding sites <span class="text-muted fw-normal">(optional)</span></label>
+              <input type="number" id="editActBreeding" class="form-control" min="0">
             </div>
             <div class="mb-3">
               <label class="form-label fw-semibold" for="editActNotes">Notes</label>
@@ -280,9 +288,9 @@
     let stats = {}, selectedGN = 'ALL', showGreen = false;
     function computeStats() {
       const from = windowFrom(), s = {};
-      const g = n => (s[n] = s[n] || { cases: 0, reports: 0, larvae: 0 });
+      const g = n => (s[n] = s[n] || { cases: 0, reports: 0, larvae: 0, breeding: 0 });
       DG.db.cases().forEach(c => { if (c.date >= from) g(c.gnArea).cases += Number(c.count || 0); });
-      DG.db.acts().forEach(a => { if (a.date >= from) { const x = g(a.gnArea); x.reports++; x.larvae += Number(a.larvae || 0); } });
+      DG.db.acts().forEach(a => { if (a.date >= from) { const x = g(a.gnArea); x.reports++; x.larvae += Number(a.larvae || 0); x.breeding += Number(a.breedingSites || 0); } });
       return s;
     }
     const casesOf = n => (stats[n] && stats[n].cases) || 0;
@@ -397,13 +405,16 @@
           y1: { position: 'right', beginAtZero: true, title: { display: true, text: 'Action Volume' }, grid: { drawOnChartArea: false } } } }
       });
 
-      const rows = Object.entries(stats).filter(([n, s]) => s.larvae > 0 && (selectedGN === 'ALL' || n === selectedGN))
-        .sort((a, b) => b[1].larvae - a[1].larvae).slice(0, 8);
+      const rows = Object.entries(stats).filter(([n, s]) => (s.larvae > 0 || s.breeding > 0) && (selectedGN === 'ALL' || n === selectedGN))
+        .sort((a, b) => (b[1].larvae + b[1].breeding) - (a[1].larvae + a[1].breeding)).slice(0, 8);
       if (larvaeChart) larvaeChart.destroy();
       larvaeChart = new Chart(document.getElementById('larvaeChart'), {
         type: 'bar',
-        data: { labels: rows.map(r => r[0]), datasets: [{ label: 'Positive breeding sites', data: rows.map(r => r[1].larvae), backgroundColor: rows.map(r => getRiskColor(r[1].cases)), borderRadius: 4 }] },
-        options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, animation: false, plugins: { legend: { display: false } },
+        data: { labels: rows.map(r => r[0]), datasets: [
+          { label: 'Confirmed larvae-positive sites', data: rows.map(r => r[1].larvae), backgroundColor: rows.map(r => getRiskColor(r[1].cases)), borderRadius: 4 },
+          { label: 'Potential breeding sites', data: rows.map(r => r[1].breeding), backgroundColor: '#38bdf8', borderRadius: 4 }
+        ] },
+        options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, animation: false, plugins: { legend: { display: true, position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
           scales: { x: { beginAtZero: true, ticks: { precision: 0 } } } }
       });
     }
@@ -416,9 +427,10 @@
         ? '<tr><td colspan="7" class="text-center text-muted py-4">No field operations logged.</td></tr>'
         : sorted.slice(0, 10).map(a => {
             const health = a.officerType === 'Health';
+            const breedingBit = a.breedingSites ? ` <span class="text-info fw-semibold">(${esc(a.breedingSites)} breeding sites)</span>` : '';
             const metric = a.inspected != null
-              ? `<b>${esc(a.inspected)}</b> inspected <span class="text-danger fw-semibold">(${esc(a.larvae || 0)} larvae +)</span>`
-              : `<b>${esc(a.count)}</b> ${esc(a.unit || 'actions')}`;
+              ? `<b>${esc(a.inspected)}</b> inspected <span class="text-danger fw-semibold">(${esc(a.larvae || 0)} larvae +)</span>${breedingBit}`
+              : `<b>${esc(a.count)}</b> ${esc(a.unit || 'actions')}${a.larvae ? ` <span class="text-danger fw-semibold">(${esc(a.larvae)} larvae +)</span>` : ''}${breedingBit}`;
             return `<tr><td class="mono text-nowrap">${esc(a.date)}</td><td class="fw-bold">${esc(a.gnArea)}</td>
               <td><span class="badge ${health ? 'text-bg-success' : 'text-bg-info'}">${health ? 'Health Officer' : 'Field Officer'}</span>
                 <div class="text-muted">${esc(a.officerName || '')}</div></td>
@@ -438,9 +450,9 @@
       document.getElementById('editActType').value = rec.activity || '';
       document.getElementById('editActCount').value = rec.count;
       const larvaeWrap = document.getElementById('editActLarvaeWrap');
-      const isHealth = rec.officerType === 'Health';
-      larvaeWrap.style.display = isHealth ? '' : 'none';
+      larvaeWrap.style.display = '';   // Health and Community records can both carry larvae / breeding-site counts now
       document.getElementById('editActLarvae').value = rec.larvae || 0;
+      document.getElementById('editActBreeding').value = rec.breedingSites || 0;
       document.getElementById('editActNotes').value = rec.notes || '';
       new bootstrap.Modal(document.getElementById('editActivityModal')).show();
     }
@@ -464,12 +476,11 @@
         gnArea: document.getElementById('editActGN').value,
         activity: document.getElementById('editActType').value,
         count: newCount,
+        larvae: Number(document.getElementById('editActLarvae').value || 0),
+        breedingSites: Number(document.getElementById('editActBreeding').value || 0),
         notes: document.getElementById('editActNotes').value.trim()
       };
-      if (rec.officerType === 'Health') {
-        updated.larvae = Number(document.getElementById('editActLarvae').value || 0);
-        if (rec.inspected != null) updated.inspected = newCount;
-      }
+      if (rec.officerType === 'Health' && rec.inspected != null) updated.inspected = newCount;
       DG.db.update('activities', id, updated);
       bootstrap.Modal.getInstance(document.getElementById('editActivityModal')).hide();
     });
@@ -519,12 +530,18 @@
       set('statRedNote', `\u2265 ${5 * w} cases in ${P.title.toLowerCase().replace('past ', '')}`);
       set('statActsLabel', `FIELD ACTIVITIES (${P.title.toUpperCase()})`);
       set('statActs', sum(acts.filter(inWin), a => a.count));
+      set('statLarvaeLabel', `LARVAE-POSITIVE SITES (${P.title.toUpperCase()})`);
+      set('statLarvaeFound', sum(acts.filter(inWin), a => a.larvae));
+      set('statLarvaeNote', `Found ${P.title.toLowerCase()}`);
+      set('statBreedingLabel', `POTENTIAL BREEDING SITES (${P.title.toUpperCase()})`);
+      set('statBreeding', sum(acts.filter(inWin), a => a.breedingSites));
+      set('statBreedingNote', `Identified ${P.title.toLowerCase()}`);
       renderActionBoxes(acts.filter(r => r.date >= from && (!P.isCustom || r.date <= P.to)), P.title);
       set('legendRed', `Red: \u2265${5 * w} (High Alert)`);
       set('legendOrange', `Orange: ${3 * w}-${5 * w - 1} (Moderate)`);
       set('legendYellow', `Yellow: 1-${3 * w - 1} (Warning)`);
       set('chartTitle', `${P.title}: Case Burden vs Preventive Interventions`);
-      set('larvaeSub', `Positive larvae sites detected (${P.title.toLowerCase()})`);
+      set('larvaeSub', `Positive larvae & potential breeding sites (${P.title.toLowerCase()})`);
 
       renderMatrix();
       renderCharts(cases, acts);
