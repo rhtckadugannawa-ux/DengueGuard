@@ -231,16 +231,32 @@
       { min: 0, key: 'green', label: 'Green', color: '#22c55e' }
     ];
     // Weekly thresholds (5 / 3 / 1) are multiplied by "w" (weeks in the period) so Monthly/Quarterly/Yearly use average weekly incidence. Edit w here to change.
+    // "week" is not listed here - it's computed dynamically in curPeriod() as the current Monday-Sunday calendar week.
     const PERIODS = {
-      week:    { label: 'Weekly',    title: 'Past 7 Days',    bucket: 'day',   n: 7,  w: 1 },
       month:   { label: 'Monthly',   title: 'Past 30 Days',   bucket: 'day',   n: 30, w: 4 },
       quarter: { label: 'Quarterly', title: 'Past 13 Weeks',  bucket: 'week',  n: 13, w: 13 },
       year:    { label: 'Yearly',    title: 'Past 12 Months', bucket: 'month', n: 12, w: 52 }
     };
+    const fmtDate = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
     let period = 'week';
     let customRange = null;   // set when the user applies a custom date range: {label,title,bucket,n,w,from,to,isCustom:true}
-    function curPeriod() { return (period === 'custom' && customRange) ? customRange : PERIODS[period]; }
-    const fmtDate = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    // "Weekly" always means the CURRENT calendar week, Monday through Sunday - recalculated every time it's
+    // read, so the dashboard rolls over to the new week automatically the moment Monday begins (no manual reset needed).
+    function currentWeekRange() {
+      const now = new Date();
+      const day = now.getDay();                    // 0 = Sun .. 6 = Sat
+      const diff = day === 0 ? -6 : 1 - day;        // offset back to this week's Monday
+      const mon = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diff);
+      const sun = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 6);
+      return { from: fmtDate(mon), to: fmtDate(sun) };
+    }
+    function curPeriod() {
+      if (period === 'week') {
+        const { from, to } = currentWeekRange();
+        return { label: 'Weekly', title: 'This Week (Mon\u2013Sun)', bucket: 'day', n: 7, w: 1, from, to, isCustom: true };
+      }
+      return (period === 'custom' && customRange) ? customRange : PERIODS[period];
+    }
     const level = n => { const w = curPeriod().w; return LEVELS.find(l => n >= (l.min > 1 ? l.min * w : l.min)); };
     function buckets() {
       const p = curPeriod(), out = [];
@@ -491,7 +507,7 @@
     // The old portal names are included so records saved earlier are still counted. Edit the lists to change what a box counts.
     const ACTION_BOXES = [
       { title: 'Larval Survey / Adult Mosquito Survey', icon: 'bi-bug', color: 'primary',
-        types: ['Larval Survey', 'Adult Mosquito Survey', 'Premises Inspection', 'Larvae Positive Sites Identified', 'Vacant Land Inspection'] },
+        types: ['Larval Survey', 'Adult Mosquito Survey', 'Premises Inspection', 'Larvae Positive Sites Identified'] },
       { title: 'Thermal or Cold Fogging / Larviciding Chemical Spraying', icon: 'bi-wind', color: 'warning',
         types: ['Thermal Fogging', 'Cold Fogging', 'Larviciding (Chemical Spraying)', 'Fogging / Space Spraying'] },
       { title: 'Notice Issued', icon: 'bi-file-earmark-text', color: 'info', types: ['Notice Issued', 'Red Notice Issued'] },
@@ -601,6 +617,14 @@
       }
       updateDashboard('ALL');
       DG.onData(() => updateDashboard(selectedGN));   // live: re-render whenever Firebase data changes
+
+      // Keep the "Weekly" view honest even if the dashboard is left open across midnight / a week boundary
+      // (e.g. a wall display) - once the calendar date rolls over, re-render so it snaps to the new day/week.
+      let lastSeenDate = dateStr(0);
+      setInterval(() => {
+        const today = dateStr(0);
+        if (today !== lastSeenDate) { lastSeenDate = today; updateDashboard(selectedGN, false); }
+      }, 60000);
     });
   </script>
 </body>
