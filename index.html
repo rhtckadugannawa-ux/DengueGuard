@@ -117,9 +117,15 @@
           <h5 class="mb-0 fw-bold"><i class="bi bi-map-fill me-2 text-danger"></i>Yatinuwara MOH Area Risk Map</h5>
           <span class="badge bg-dark px-2 py-1 text-wrap text-start"><i class="bi bi-layers-half me-1"></i>Dual-Layer Active (GN Areas + MOH Boundary)</span>
         </div>
-        <div class="form-check form-switch mb-0">
-          <input class="form-check-input" type="checkbox" role="switch" id="showGreen">
-          <label class="form-check-label small" for="showGreen">Show safe (green) areas</label>
+        <div class="d-flex flex-wrap align-items-center gap-3">
+          <div class="btn-group btn-group-sm" role="group" aria-label="Map export">
+            <button type="button" class="btn btn-outline-dark" id="mapDownloadBtn" title="Download the map as a PNG image with the report title"><i class="bi bi-download me-1"></i>Download</button>
+            <button type="button" class="btn btn-outline-dark" id="mapPrintBtn" title="Print the map with the report title"><i class="bi bi-printer me-1"></i>Print</button>
+          </div>
+          <div class="form-check form-switch mb-0">
+            <input class="form-check-input" type="checkbox" role="switch" id="showGreen">
+            <label class="form-check-label small" for="showGreen">Show safe (green) areas</label>
+          </div>
         </div>
       </div>
       <div class="card-body p-0"><div id="dengueMap"></div></div>
@@ -348,7 +354,7 @@
     function initMap() {
       map = L.map('dengueMap');
       L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', {
-        attribution: 'Tiles &copy; Esri', maxZoom: 19
+        attribution: 'Tiles &copy; Esri', maxZoom: 19, crossOrigin: true
       }).addTo(map);
       map.createPane('mohPane').style.zIndex = 450;   // MOH outline always above GN polygons
 
@@ -383,6 +389,137 @@
         if (l.feature.properties.GND_N === selectedGN) { l.bringToFront(); if (zoom) map.fitBounds(l.getBounds(), { maxZoom: 15 }); }
       });
       if (zoom && selectedGN === 'ALL') map.fitBounds(mohBoundaryLayer.getBounds());
+    }
+
+    // ===== MAP EXPORT: download (PNG) / print, with a report title for the selected period =====
+    const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const FONT = 'system-ui, "Segoe UI", Arial, sans-serif';
+    function isoWeekNo(d) {   // ISO week number (Monday-Sunday weeks, same as the "Weekly" view)
+      const t = new Date(d); t.setDate(t.getDate() + 3 - ((t.getDay() + 6) % 7));
+      const j4 = new Date(t.getFullYear(), 0, 4); j4.setDate(j4.getDate() - ((j4.getDay() + 6) % 7));
+      return Math.round((t - j4) / 604800000) + 1;
+    }
+    const niceDate = d => `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+    function reportPeriod() {
+      const P = curPeriod(), from = P.isCustom ? P.from : windowFrom(), to = P.isCustom ? P.to : dateStr(0);
+      const f = new Date(from + 'T00:00:00'), t = new Date(to + 'T00:00:00');
+      const span = Math.round((t - f) / 86400000) + 1;
+      let label;
+      if (f.getDay() === 1 && span === 7) label = 'Week ' + isoWeekNo(f);      // a Monday-Sunday week => "Week 42"
+      else if (!P.isCustom) label = P.title;                                    // Past 30 Days / 13 Weeks / 12 Months
+      else label = `${from} to ${to}`;
+      return { label, range: `${niceDate(f)} – ${niceDate(t)}` };
+    }
+    function buildMapCanvas(skipTiles) {
+      const S = 2, size = map.getSize(), W = size.x, H = size.y, HEAD = 84;
+      const w = curPeriod().w, rp = reportPeriod();
+      const legend = [
+        ['#ef4444', `Red: ≥${5 * w} (High Alert)`], ['#f97316', `Orange: ${3 * w}-${5 * w - 1} (Moderate)`],
+        ['#eab308', `Yellow: 1-${3 * w - 1} (Warning)`], ['#22c55e', 'Green: 0 cases (Safe)'], ['line', 'MOH boundary']
+      ];
+      // lay the legend out in rows first so the footer height fits
+      const m = document.createElement('canvas').getContext('2d'); m.font = `12px ${FONT}`;
+      const pos = []; let lx = 20, row = 0;
+      legend.forEach(([c, t]) => {
+        const iw = 24 + m.measureText(t).width + 18;
+        if (lx + iw > W - 10 && lx > 20) { lx = 20; row++; }
+        pos.push({ c, t, x: lx, row }); lx += iw;
+      });
+      const FOOT = 20 + (row + 1) * 22 + 26;
+      const cv = document.createElement('canvas'); cv.width = W * S; cv.height = (HEAD + H + FOOT) * S;
+      const ctx = cv.getContext('2d'); ctx.scale(S, S);
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, HEAD + H + FOOT);
+
+      // ---- title block ----
+      const title = `Dengue Case Reporting / Yatinuwara - ${rp.label}`;
+      let fs = 24; ctx.font = `700 ${fs}px ${FONT}`;
+      while (ctx.measureText(title).width > W - 40 && fs > 12) { fs--; ctx.font = `700 ${fs}px ${FONT}`; }
+      ctx.fillStyle = '#0f172a'; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      ctx.fillText(title, 20, 38);
+      const totalCases = Object.values(stats).reduce((a, x) => a + x.cases, 0);
+      const atRisk = Object.entries(stats).filter(([n, x]) => x.cases > 0 && GN_INFO[n]).length;
+      ctx.fillStyle = '#475569'; ctx.font = `13px ${FONT}`;
+      let sub = `${rp.range}  ·  ${totalCases} case${totalCases === 1 ? '' : 's'}  ·  ${atRisk} GN area${atRisk === 1 ? '' : 's'} at risk`;
+      while (ctx.measureText(sub).width > W - 40 && sub.length > 10) sub = sub.slice(0, -2);
+      ctx.fillText(sub, 20, 62);
+      ctx.fillStyle = '#e2e8f0'; ctx.fillRect(0, HEAD - 6, W, 1);
+
+      // ---- map ----
+      ctx.save(); ctx.translate(0, HEAD); ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
+      ctx.fillStyle = '#dbe4ee'; ctx.fillRect(0, 0, W, H);
+      if (!skipTiles) {
+        const mr = map.getContainer().getBoundingClientRect();
+        map.getPane('tilePane').querySelectorAll('img').forEach(img => {
+          if (!img.complete || !img.naturalWidth) return;
+          const r = img.getBoundingClientRect();
+          ctx.drawImage(img, r.left - mr.left, r.top - mr.top, r.width + 0.6, r.height + 0.6);
+        });
+      }
+      const ringsOf = ll => (ll.length && ll[0] && ll[0].lat !== undefined) ? [ll] : ll.flatMap(ringsOf);
+      const trace = ll => ringsOf(ll).forEach(ring => {
+        ring.forEach((p, i) => { const c = map.latLngToContainerPoint(p); if (i) ctx.lineTo(c.x, c.y); else ctx.moveTo(c.x, c.y); });
+        ctx.closePath();
+      });
+      gnLayer.eachLayer(l => {
+        const st = riskStyle(l.feature);
+        ctx.beginPath(); trace(l.getLatLngs());
+        if (st.fillOpacity) { ctx.globalAlpha = st.fillOpacity; ctx.fillStyle = st.fillColor; ctx.fill('evenodd'); ctx.globalAlpha = 1; }
+        ctx.setLineDash([]); ctx.strokeStyle = st.color; ctx.lineWidth = st.weight; ctx.stroke();
+      });
+      mohBoundaryLayer.eachLayer(l => {
+        ctx.beginPath(); trace(l.getLatLngs());
+        ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 3.5; ctx.setLineDash([8, 6]); ctx.stroke(); ctx.setLineDash([]);
+      });
+      // names: always for marked areas (with case count); safe areas only when zoomed in - same rule as the screen
+      const zoomedIn = map.getZoom() >= 14, labels = [];
+      gnLayer.eachLayer(l => {
+        const name = l.feature.properties.GND_N, n = casesOf(name);
+        if (n > 0 || zoomedIn) labels.push({ n, text: n > 0 ? `${name} (${n})` : name, c: map.latLngToContainerPoint(l.getBounds().getCenter()) });
+      });
+      labels.sort((a, b) => a.n - b.n);   // highest risk drawn last = on top
+      ctx.font = `700 11px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      labels.forEach(({ text, c }) => {
+        if (c.x < 0 || c.y < 0 || c.x > W || c.y > H) return;
+        const bw = ctx.measureText(text).width + 10, bh = 17;
+        ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(c.x - bw / 2, c.y - bh / 2, bw, bh, 4); else ctx.rect(c.x - bw / 2, c.y - bh / 2, bw, bh);
+        ctx.fillStyle = 'rgba(255,255,255,.92)'; ctx.fill(); ctx.strokeStyle = '#475569'; ctx.lineWidth = 1; ctx.stroke();
+        ctx.fillStyle = '#0f172a'; ctx.fillText(text, c.x, c.y + 1);
+      });
+      ctx.restore();
+      ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 1; ctx.strokeRect(0.5, HEAD + 0.5, W - 1, H - 1);
+
+      // ---- legend / footer ----
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.font = `12px ${FONT}`;
+      pos.forEach(({ c, t, x, row: r }) => {
+        const y = HEAD + H + 22 + r * 22;
+        if (c === 'line') { ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 2.5; ctx.setLineDash([5, 3]); ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 16, y); ctx.stroke(); ctx.setLineDash([]); }
+        else { ctx.fillStyle = c; ctx.fillRect(x, y - 7, 16, 14); }
+        ctx.fillStyle = '#0f172a'; ctx.fillText(t, x + 22, y);
+      });
+      ctx.fillStyle = '#64748b'; ctx.font = `11px ${FONT}`;
+      ctx.fillText(`DengueGuard · Generated ${new Date().toLocaleString()}`, 20, HEAD + H + FOOT - 14);
+      return cv;
+    }
+    function exportMap(kind) {
+      if (!map || !gnLayer) { alert('The map is not available.'); return; }
+      let cv = buildMapCanvas(false), url;
+      try { url = cv.toDataURL('image/png'); }
+      catch (e) {
+        cv = buildMapCanvas(true); url = cv.toDataURL('image/png');
+        alert('The base-map pictures could not be included (browser security), so the export has no background map. The areas, names and title are included.');
+      }
+      const rp = reportPeriod(), title = `Dengue Case Reporting / Yatinuwara - ${rp.label}`;
+      if (kind === 'download') {
+        const a = document.createElement('a');
+        a.href = url; a.download = `Dengue-Case-Reporting-Yatinuwara-${rp.label.replace(/[^\w]+/g, '-')}.png`;
+        document.body.appendChild(a); a.click(); a.remove();
+      } else {
+        const f = document.createElement('iframe');
+        f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
+        document.body.appendChild(f);
+        f.srcdoc = `<!DOCTYPE html><html><head><title>${esc(title)}</title><style>@page{size:A4 landscape;margin:8mm}html,body{margin:0}img{display:block;margin:0 auto;max-width:100%;max-height:192mm}</style></head><body><img src="${url}" onload="setTimeout(function(){window.focus();window.print()},150)"></body></html>`;
+        setTimeout(() => f.remove(), 120000);
+      }
     }
 
     // ===== RISK MATRIX (Red / Orange / Yellow only) =====
@@ -609,6 +746,8 @@
         document.querySelectorAll('#periodGroup .btn').forEach(x => x.classList.toggle('active', x.dataset.period === 'custom'));
         updateDashboard(selectedGN, false);
       });
+      document.getElementById('mapDownloadBtn').addEventListener('click', () => exportMap('download'));
+      document.getElementById('mapPrintBtn').addEventListener('click', () => exportMap('print'));
       document.getElementById('showGreen').addEventListener('change', e => { showGreen = e.target.checked; renderMapPolygons(false); });
 
       stats = computeStats();
