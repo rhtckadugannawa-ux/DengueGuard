@@ -6,6 +6,7 @@
   <title>Daily Patient Entry - Dengue Surveillance</title>
   <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
   <style>body { background-color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; }</style>
 </head>
 <body>
@@ -94,12 +95,21 @@
         </div>
       </div>
     </div>
+    <div class="card border-0 shadow-sm mt-4">
+      <div class="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <h5 class="fw-bold mb-0"><i class="bi bi-map-fill me-2 text-danger"></i>Yatinuwara MOH Area Risk Map</h5>
+        <div class="small"><span class="badge dg-red">Red</span> <span class="badge dg-orange">Orange</span> <span class="badge dg-yellow">Yellow</span> <span class="text-muted ms-1">past 7 days &middot; marked areas show name &amp; cases</span></div>
+      </div>
+      <div class="card-body p-0"><div id="riskMap"></div></div>
+    </div>
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
   <script src="firebase-config.js"></script>
+  <script src="geo-data.js"></script>
   <script src="common.js"></script>
   <script>
     document.getElementById('entryDate').value = DG.dateStr();

@@ -136,7 +136,9 @@
     .ss-list{display:none;position:absolute;z-index:1050;left:0;right:0;max-height:240px;overflow-y:auto;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 8px 20px rgba(0,0,0,.12);margin-top:2px}
     .ss-item,.ss-empty{padding:7px 12px;font-size:14px}.ss-item{cursor:pointer}.ss-item:hover,.ss-item.active{background:#e0f2fe}.ss-empty{color:#94a3b8}
     .dg-red{background:#ef4444;color:#fff}.dg-orange{background:#f97316;color:#fff}.dg-yellow{background:#eab308;color:#000}
-    .dg-risk{max-height:300px;overflow-y:auto}`;
+    .dg-risk{max-height:300px;overflow-y:auto}
+    #riskMap{height:520px;width:100%;border-radius:8px;z-index:1;background:#dbe4ee}
+    .gn-label{background:rgba(255,255,255,.9);border:1px solid #475569;font-size:11px;font-weight:700;color:#0f172a;padding:1px 5px;border-radius:4px;box-shadow:0 1px 3px rgba(0,0,0,.25)}`;
   document.head.appendChild(st);
 
   // ---------- officers (shared list, stored in Firestore) ----------
@@ -238,6 +240,53 @@
         : '<div class="p-3 text-center text-muted small">No GN areas at risk this week.</div>'}</div></div>`;
   }
 
+  // ---------- shared risk map (shown on the portal pages that contain <div id="riskMap">) ----------
+  // Past-7-day risk is coloured by level; marked areas ALWAYS show their name + case count, safe areas show it on hover / when zoomed in.
+  const RISK_COL = { red: '#ef4444', orange: '#f97316', yellow: '#eab308' };
+  let rmap = null, rLayer = null, rMoh = null, rRisk = {};
+  function rStyle(f) {
+    const r = rRisk[f.properties.GND_N];
+    return { fillColor: r ? RISK_COL[r.level] : '#22c55e', fillOpacity: r ? 0.65 : 0, color: r ? '#334155' : '#94a3b8', weight: r ? 1.5 : 1, opacity: 1 };
+  }
+  function refreshRiskMap() {
+    if (!rmap || !rLayer) return;
+    rRisk = {}; weeklyRisk().forEach(r => { rRisk[r.name] = r; });
+    rLayer.setStyle(rStyle);
+    const zoomedIn = rmap.getZoom() >= 14;
+    rLayer.eachLayer(l => {
+      const name = l.feature.properties.GND_N, r = rRisk[name];
+      const perm = !!r || zoomedIn, text = r ? esc(name) + ' (' + r.cases + ')' : esc(name), key = (perm ? 'p' : 'h') + '|' + text;
+      if (l._lblKey === key) return;
+      l._lblKey = key; l.unbindTooltip();
+      l.bindTooltip(text, perm ? { permanent: true, direction: 'center', className: 'gn-label' } : { sticky: true, className: 'gn-label' });
+    });
+  }
+  function initRiskMap() {
+    const box = document.getElementById('riskMap');
+    if (!box || typeof L === 'undefined' || !window.GN_GEOJSON) return;
+    try {
+      rmap = L.map(box);
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', { attribution: 'Tiles &copy; Esri', maxZoom: 19 }).addTo(rmap);
+      rmap.createPane('mohPane').style.zIndex = 450;
+      rLayer = L.geoJSON(window.GN_GEOJSON, {
+        style: rStyle,
+        onEachFeature(f, layer) {
+          const name = f.properties.GND_N;
+          layer.bindPopup(() => { const r = rRisk[name]; return '<div style="font-size:13px"><b>' + esc(name) + '</b><br>Past 7 days: <b>' + (r ? r.cases + ' cases (' + r.level + ')' : '0 cases') + '</b><div class="mt-1 text-primary">Click also selects it in the form</div></div>'; });
+          layer.on({
+            mouseover: e => e.target.setStyle({ weight: 3, color: '#000' }),
+            mouseout: e => rLayer.resetStyle(e.target),
+            click: () => { const sel = document.querySelector('select[data-gn]'); if (sel && sel._ss) sel._ss.setValue(name); }
+          });
+        }
+      }).addTo(rmap);
+      rMoh = L.geoJSON(window.MOH_GEOJSON, { pane: 'mohPane', interactive: false, style: { color: '#0f172a', weight: 3.5, dashArray: '8, 6', fill: false } }).addTo(rmap);
+      rmap.fitBounds(rMoh.getBounds());
+      rmap.on('zoomend', refreshRiskMap);
+      refreshRiskMap();
+    } catch (e) { console.error('Risk map failed to load:', e); box.innerHTML = '<div class="p-4 text-center text-danger">Map could not load (Leaflet blocked or offline).</div>'; rmap = null; }
+  }
+
   // ---------- init ----------
   function init() {
     document.querySelectorAll('select[data-gn]').forEach(sel => {
@@ -252,11 +301,13 @@
         if (b && sel && sel._ss) sel._ss.setValue(b.dataset.gn);
       });
     }
+    initRiskMap();
     initDB();
     onData(() => {
       document.querySelectorAll('select[data-officer]').forEach(fillOfficers);
       document.querySelectorAll('select[data-acttype]').forEach(fillActivityTypes);
       renderRiskPanel();
+      refreshRiskMap();
     });
   }
   window.DG = { GN_LIST, dateStr, esc, officer, addOfficerPrompt, addActivityPrompt, fillActivityTypes, renderRiskPanel, enhanceSelect, onData,
