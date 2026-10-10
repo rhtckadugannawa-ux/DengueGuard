@@ -71,9 +71,13 @@
 
       <div class="col-lg-7">
         <div class="card border-0 shadow-sm">
-          <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+          <div class="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
             <h5 class="fw-bold mb-0">Patient Notification Registry</h5>
-            <span class="badge bg-secondary" id="totalRecordsBadge">0 Logs</span>
+            <div class="d-flex flex-wrap align-items-center gap-2">
+              <label class="fw-semibold small mb-0" for="weekSelect"><i class="bi bi-calendar-week me-1"></i>Week:</label>
+              <select id="weekSelect" class="form-select form-select-sm" style="width:auto;max-width:260px"></select>
+              <span class="badge bg-secondary" id="totalRecordsBadge">0 Logs</span>
+            </div>
           </div>
           <div class="card-body p-0">
             <div class="table-responsive">
@@ -115,12 +119,55 @@
     document.getElementById('entryDate').value = DG.dateStr();
     document.getElementById('entryDate').max = DG.dateStr();   // no future dates
 
+    // ---- week filter (ISO weeks, Monday-Sunday - same weeks as the main dashboard's "Weekly" view) ----
+    const pad2 = n => String(n).padStart(2, '0');
+    const fmtD = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+    const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    function mondayOf(s) {
+      const [y, m, d] = s.split('-').map(Number), dt = new Date(y, m - 1, d);
+      dt.setDate(dt.getDate() - ((dt.getDay() + 6) % 7));
+      return dt;
+    }
+    function isoWeek(mon) {
+      const th = new Date(mon); th.setDate(th.getDate() + 3);
+      const jan4 = new Date(th.getFullYear(), 0, 4);
+      const w1 = new Date(jan4); w1.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7));
+      return Math.round((mon - w1) / 604800000) + 1;
+    }
+    function weekLabel(monStr) {
+      const mon = mondayOf(monStr), sun = new Date(mon); sun.setDate(sun.getDate() + 6);
+      const r = `${MON[mon.getMonth()]} ${mon.getDate()} – ${MON[sun.getMonth()]} ${sun.getDate()}, ${sun.getFullYear()}`;
+      return `Week ${isoWeek(mon)} (${r})`;
+    }
+    const weekSelect = document.getElementById('weekSelect');
+    let weekSel = fmtD(mondayOf(DG.dateStr()));   // default: the current week; 'ALL' = every week
+
+    function fillWeeks(records) {
+      const cur = fmtD(mondayOf(DG.dateStr())), set = new Set([cur]);
+      records.forEach(r => { if (r.date) set.add(fmtD(mondayOf(r.date))); });
+      if (weekSel !== 'ALL') set.add(weekSel);
+      const weeks = [...set].sort().reverse();
+      weekSelect.innerHTML = '<option value="ALL">All weeks</option>' +
+        weeks.map(w => `<option value="${w}">${w === cur ? 'This week – ' : ''}${weekLabel(w)}</option>`).join('');
+      weekSelect.value = weekSel;
+    }
+    weekSelect.addEventListener('change', () => { weekSel = weekSelect.value; loadCases(); });
+
     function loadCases() {
-      const records = DG.db.cases();
-      document.getElementById('totalRecordsBadge').innerText = `${records.length} Logs`;
+      const all = DG.db.cases();
+      fillWeeks(all);
+      let records = all, emptyMsg = 'No records registered.';
+      if (weekSel !== 'ALL') {
+        const from = weekSel, sun = mondayOf(weekSel); sun.setDate(sun.getDate() + 6);
+        const to = fmtD(sun);
+        records = all.filter(r => r.date >= from && r.date <= to);
+        emptyMsg = 'No patients registered for this week.';
+      }
+      const patients = records.reduce((s, r) => s + Number(r.count || 0), 0);
+      document.getElementById('totalRecordsBadge').innerText = `${records.length} Logs · ${patients} patients`;
       const tbody = document.getElementById('casesTableBody');
       if (records.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted">No records registered.</td></tr>';
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-muted">${emptyMsg}</td></tr>`;
         return;
       }
       tbody.innerHTML = records.slice(0, 200).map(r => `
@@ -151,6 +198,7 @@
         officerName: off.name
       });
       if (!saved) return;   // not connected: keep what was typed
+      if (weekSel !== 'ALL') weekSel = fmtD(mondayOf(document.getElementById('entryDate').value));   // show the week that was just saved to
       e.target.reset();
       document.getElementById('entryDate').value = DG.dateStr();
     });
