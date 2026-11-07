@@ -138,6 +138,31 @@
     .dg-red{background:#ef4444;color:#fff}.dg-orange{background:#f97316;color:#fff}.dg-yellow{background:#eab308;color:#000}
     .dg-risk{max-height:300px;overflow-y:auto}
     #riskMap{height:520px;width:100%;border-radius:8px;z-index:1;background:#dbe4ee}
+    .dg-pin{background:none !important;border:0 !important}.dg-pin svg{filter:drop-shadow(0 2px 2px rgba(0,0,0,.45));overflow:visible}
+    #riskMap[data-pin]{height:340px}
+    .dg-pinning,.dg-pinning .leaflet-interactive{cursor:crosshair !important}
+    #pinBar{font-size:13px;padding:6px 10px;border-radius:8px;background:#f1f5f9;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+    #pinBar.ok{background:#dcfce7}#pinBar.warn{background:#fee2e2;color:#991b1b}
+    @media (max-width:767.98px){#riskMap[data-pin]{height:56vh;min-height:300px}}
+    html{-webkit-text-size-adjust:100%}
+    body{overflow-x:hidden}
+    .dg-risk-head{cursor:default}
+    @media (max-width:767.98px){
+      .dg-risk-head{cursor:pointer}
+      .dg-risk-collapsed{display:none}
+      #riskMap{height:62vh;min-height:340px}
+      .gn-label{font-size:10px !important;padding:0 3px !important}
+    }
+    @media (max-width:575.98px){
+      .card-body{padding:.9rem}
+      .dg-stack thead{display:none}
+      .dg-stack,.dg-stack tbody,.dg-stack tr,.dg-stack td{display:block;width:100%}
+      .dg-stack tr{border-bottom:1px solid #e2e8f0;padding:.55rem .85rem}
+      .dg-stack td{position:relative;border:0 !important;padding:.2rem 0 .2rem 40% !important;min-height:1.6em;text-align:left;background:transparent !important;box-shadow:none !important}
+      .dg-stack td::before{content:attr(data-label);position:absolute;left:0;top:.2rem;width:36%;font-weight:600;font-size:.8rem;color:#64748b}
+      .dg-stack td[colspan]{padding-left:0 !important;text-align:center}
+      .dg-stack td[colspan]::before{content:none}
+    }
     .gn-label{background:rgba(255,255,255,.9);border:1px solid #475569;font-size:11px;font-weight:700;color:#0f172a;padding:1px 5px;border-radius:4px;box-shadow:0 1px 3px rgba(0,0,0,.25)}`;
   document.head.appendChild(st);
 
@@ -227,25 +252,60 @@
     return Object.entries(m).filter(e => e[1] > 0).sort((a, b) => b[1] - a[1])
       .map(([name, cases]) => ({ name, cases, level: cases >= 5 ? 'red' : cases >= 3 ? 'orange' : 'yellow' }));
   }
+  let riskOpen = false;   // phones: the risk list starts collapsed so the entry form is visible first (desktop always shows it)
   function renderRiskPanel() {
     const el = document.getElementById('riskPanel'); if (!el) return;
     const rows = weeklyRisk(), n = k => rows.filter(r => r.level === k).length;
-    el.innerHTML = `<div class="card border-0 shadow-sm"><div class="card-header bg-white py-3">
-      <h6 class="fw-bold mb-2"><i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>Past 7 Days Risk Areas</h6>
+    el.innerHTML = `<div class="card border-0 shadow-sm"><div class="card-header bg-white py-3 dg-risk-head" data-risk-toggle>
+      <h6 class="fw-bold mb-2"><i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>Past 7 Days Risk Areas<i class="bi bi-chevron-${riskOpen ? 'up' : 'down'} float-end d-md-none"></i></h6>
       <span class="badge dg-red me-1">Red ${n('red')}</span><span class="badge dg-orange me-1">Orange ${n('orange')}</span><span class="badge dg-yellow">Yellow ${n('yellow')}</span>
       <div class="small text-muted mt-2">Click an area to select it in the form.</div></div>
-      <div class="list-group list-group-flush dg-risk">${rows.length
+      <div class="list-group list-group-flush dg-risk${riskOpen ? '' : ' dg-risk-collapsed'}">${rows.length
         ? rows.map(r => `<button type="button" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" data-gn="${esc(r.name)}">
             <span class="fw-semibold">${esc(r.name)}</span><span><span class="badge dg-${r.level}">${r.level[0].toUpperCase() + r.level.slice(1)}</span> <span class="ms-1 small text-muted">${r.cases} cases</span></span></button>`).join('')
         : '<div class="p-3 text-center text-muted small">No GN areas at risk this week.</div>'}</div></div>`;
   }
 
+  // ---------- phone-friendly tables: each row becomes a small card (label : value) on narrow screens ----------
+  function initStackTables() {
+    document.querySelectorAll('table.dg-stack').forEach(tbl => {
+      const heads = [...tbl.querySelectorAll('thead th')].map(th => th.textContent.trim().replace(/\s*\/\s*[\u0D80-\u0DFF].*$/, ''));
+      const run = () => tbl.querySelectorAll('tbody tr').forEach(tr => [...tr.children].forEach((td, i) => {
+        if (td.colSpan > 1 || td.dataset.label || !heads[i]) return;
+        td.dataset.label = heads[i];
+      }));
+      if (tbl.tBodies[0]) new MutationObserver(run).observe(tbl.tBodies[0], { childList: true });
+      run();
+    });
+  }
+
   // ---------- shared risk map (shown on the portal pages that contain <div id="riskMap">) ----------
   // Past-7-day risk is coloured by level; marked areas ALWAYS show their name + case count, safe areas show it on hover / when zoomed in.
+  // PIN MODE (<div id="riskMap" data-pin="1">, used on the patient-entry page): when a GN division is chosen in the form, the map zooms to
+  // ONLY that division and the officer can tap inside it to drop (and drag) a pin for the patient's location. DG.getPin() returns it.
   const RISK_COL = { red: '#ef4444', orange: '#f97316', yellow: '#eab308' };
-  let rmap = null, rLayer = null, rMoh = null, rRisk = {};
+  const PIN_PATH = 'M14 1C7 1 1.5 6.5 1.5 13.4 1.5 22.8 14 37 14 37S26.5 22.8 26.5 13.4C26.5 6.5 21 1 14 1z';
+  let rmap = null, rLayer = null, rMoh = null, rRisk = {}, rSel = '', rPin = null, rPinMarker = null;
+  const isPinMap = () => { const b = document.getElementById('riskMap'); return !!(b && b.dataset.pin); };
+  function pinIcon(color, count) {
+    const mid = count > 1 ? '<text x="14" y="17.5" text-anchor="middle" font-size="12" font-weight="700" fill="#fff" font-family="Arial,sans-serif">' + count + '</text>' : '<circle cx="14" cy="13.5" r="4.5" fill="#fff"/>';
+    return L.divIcon({ className: 'dg-pin', iconSize: [28, 38], iconAnchor: [14, 37], popupAnchor: [0, -34],
+      html: '<svg width="28" height="38" viewBox="0 0 28 38"><path d="' + PIN_PATH + '" fill="' + color + '" stroke="#fff" stroke-width="2"/>' + mid + '</svg>' });
+  }
+  // point-in-polygon (ray casting) against the real GN boundary, so a pin can only be dropped inside the chosen division
+  const ringHas = (ring, x, y) => { let r = false; for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) { const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) r = !r; } return r; };
+  const inPoly = (p, x, y) => ringHas(p[0], x, y) && !p.slice(1).some(h => ringHas(h, x, y));
+  function inGN(name, ll) {
+    const f = (window.GN_GEOJSON ? window.GN_GEOJSON.features : []).find(f => f.properties.GND_N === name); if (!f) return false;
+    const g = f.geometry, polys = g.type === 'Polygon' ? [g.coordinates] : g.coordinates;
+    return polys.some(p => inPoly(p, ll.lng, ll.lat));
+  }
   function rStyle(f) {
-    const r = rRisk[f.properties.GND_N];
+    const name = f.properties.GND_N, r = rRisk[name];
+    if (rSel) {   // pin mode with a division chosen: hide every other division
+      if (name !== rSel) return { fillOpacity: 0, opacity: 0, weight: 0 };
+      return { fillColor: r ? RISK_COL[r.level] : '#22c55e', fillOpacity: r ? 0.3 : 0.1, color: '#0f172a', weight: 3, opacity: 1 };
+    }
     return { fillColor: r ? RISK_COL[r.level] : '#22c55e', fillOpacity: r ? 0.65 : 0, color: r ? '#334155' : '#94a3b8', weight: r ? 1.5 : 1, opacity: 1 };
   }
   function refreshRiskMap() {
@@ -254,17 +314,57 @@
     rLayer.setStyle(rStyle);
     const zoomedIn = rmap.getZoom() >= 14;
     rLayer.eachLayer(l => {
-      const name = l.feature.properties.GND_N, r = rRisk[name];
-      const perm = !!r || zoomedIn, text = r ? esc(name) + ' (' + r.cases + ')' : esc(name), key = (perm ? 'p' : 'h') + '|' + text;
+      const name = l.feature.properties.GND_N, r = rRisk[name], hide = rSel && name !== rSel;
+      const perm = !!r || zoomedIn || !!rSel, text = r ? esc(name) + ' (' + r.cases + ')' : esc(name), key = hide ? 'x' : (perm ? 'p' : 'h') + '|' + text;
       if (l._lblKey === key) return;
       l._lblKey = key; l.unbindTooltip();
-      l.bindTooltip(text, perm ? { permanent: true, direction: 'center', className: 'gn-label' } : { sticky: true, className: 'gn-label' });
+      if (!hide) l.bindTooltip(text, perm ? { permanent: true, direction: 'center', className: 'gn-label' } : { sticky: true, className: 'gn-label' });
     });
+  }
+  function pinBar(kind, html) {
+    const bar = document.getElementById('pinBar'); if (!bar) return;
+    bar.className = kind || ''; bar.innerHTML = html;
+  }
+  const pinHint = () => rSel
+    ? pinBar('', '<span>Tap inside <b>' + esc(rSel) + '</b> to drop the patient\'s pin <span class="text-muted">(optional)</span></span>')
+    : pinBar('', '<span>Choose the <b>GN Division</b> above – the map zooms to it, then tap the patient\'s location to drop a pin <span class="text-muted">(optional)</span>.</span>');
+  function clearPin() {
+    rPin = null;
+    if (rPinMarker) { rPinMarker.remove(); rPinMarker = null; }
+    if (isPinMap()) pinHint();
+  }
+  function placePin(ll) {
+    rPin = { lat: +ll.lat.toFixed(6), lng: +ll.lng.toFixed(6) };
+    if (!rPinMarker) {
+      rPinMarker = L.marker(ll, { draggable: true, icon: pinIcon('#dc2626'), zIndexOffset: 1000, title: 'Drag to adjust' }).addTo(rmap);
+      rPinMarker.on('dragend', () => {
+        const p = rPinMarker.getLatLng();
+        if (inGN(rSel, p)) { rPin = { lat: +p.lat.toFixed(6), lng: +p.lng.toFixed(6) }; pinOk(); }
+        else { rPinMarker.setLatLng(rPin); pinBar('warn', '<span>That spot is outside <b>' + esc(rSel) + '</b> – the pin went back.</span>'); }
+      });
+    } else rPinMarker.setLatLng(ll);
+    pinOk();
+  }
+  const pinOk = () => pinBar('ok', '<span><i class="bi bi-geo-alt-fill text-danger"></i> Pin placed in <b>' + esc(rSel) + '</b> – drag it to adjust.</span><button type="button" class="btn btn-sm btn-outline-danger py-0" data-pin-clear>Remove pin</button>');
+  function setRiskSel(name) {   // called when the form's GN Division changes
+    if (!rmap || !isPinMap()) return;
+    name = name || '';
+    if (name === rSel && !rPin) return;
+    if (name !== rSel) clearPin();
+    rSel = name;
+    rmap.getContainer().classList.toggle('dg-pinning', !!rSel);
+    refreshRiskMap();
+    if (rSel) {
+      rLayer.eachLayer(l => { if (l.feature.properties.GND_N === rSel) { l.bringToFront(); rmap.fitBounds(l.getBounds(), { padding: [18, 18], maxZoom: 17 }); } });
+      pinHint();
+    } else { rmap.fitBounds(rMoh.getBounds()); pinHint(); }
   }
   function initRiskMap() {
     const box = document.getElementById('riskMap');
     if (!box || typeof L === 'undefined' || !window.GN_GEOJSON) return;
     try {
+      const pinMode = isPinMap();
+      if (pinMode) box.insertAdjacentHTML('beforebegin', '<div id="pinBar"></div>');
       rmap = L.map(box);
       L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', { attribution: 'Tiles &copy; Esri', maxZoom: 19 }).addTo(rmap);
       rmap.createPane('mohPane').style.zIndex = 450;
@@ -272,17 +372,35 @@
         style: rStyle,
         onEachFeature(f, layer) {
           const name = f.properties.GND_N;
-          layer.bindPopup(() => { const r = rRisk[name]; return '<div style="font-size:13px"><b>' + esc(name) + '</b><br>Past 7 days: <b>' + (r ? r.cases + ' cases (' + r.level + ')' : '0 cases') + '</b><div class="mt-1 text-primary">Click also selects it in the form</div></div>'; });
+          if (!pinMode) layer.bindPopup(() => { const r = rRisk[name]; return '<div style="font-size:13px"><b>' + esc(name) + '</b><br>Past 7 days: <b>' + (r ? r.cases + ' cases (' + r.level + ')' : '0 cases') + '</b><div class="mt-1 text-primary">Click also selects it in the form</div></div>'; });
           layer.on({
-            mouseover: e => e.target.setStyle({ weight: 3, color: '#000' }),
-            mouseout: e => rLayer.resetStyle(e.target),
-            click: () => { const sel = document.querySelector('select[data-gn]'); if (sel && sel._ss) sel._ss.setValue(name); }
+            mouseover: e => { if (!rSel) e.target.setStyle({ weight: 3, color: '#000' }); },
+            mouseout: e => { if (!rSel) rLayer.resetStyle(e.target); },
+            click: e => {
+              if (pinMode && rSel) return;   // a division is chosen: the map click below drops the pin
+              if (pinMode) L.DomEvent.stopPropagation(e);
+              const sel = document.querySelector('select[data-gn]'); if (sel && sel._ss) sel._ss.setValue(name);
+            }
           });
         }
       }).addTo(rmap);
       rMoh = L.geoJSON(window.MOH_GEOJSON, { pane: 'mohPane', interactive: false, style: { color: '#0f172a', weight: 3.5, dashArray: '8, 6', fill: false } }).addTo(rmap);
       rmap.fitBounds(rMoh.getBounds());
       rmap.on('zoomend', refreshRiskMap);
+      if (pinMode) {
+        pinHint();
+        rmap.on('click', e => {
+          if (!rSel) return;
+          if (inGN(rSel, e.latlng)) placePin(e.latlng);
+          else pinBar('warn', '<span>That spot is outside <b>' + esc(rSel) + '</b> – tap inside the highlighted area.</span>');
+        });
+        document.getElementById('pinBar').addEventListener('click', e => { if (e.target.closest('[data-pin-clear]')) clearPin(); });
+        const sel = document.querySelector('select[data-gn]');
+        if (sel) {
+          sel.addEventListener('change', () => setRiskSel(sel.value));
+          if (sel.form) sel.form.addEventListener('reset', () => setTimeout(() => { clearPin(); setRiskSel(''); }, 0));
+        }
+      }
       refreshRiskMap();
     } catch (e) { console.error('Risk map failed to load:', e); box.innerHTML = '<div class="p-4 text-center text-danger">Map could not load (Leaflet blocked or offline).</div>'; rmap = null; }
   }
@@ -297,10 +415,12 @@
     const panel = document.getElementById('riskPanel');
     if (panel) {
       panel.addEventListener('click', e => {
+        if (e.target.closest('[data-risk-toggle]')) { riskOpen = !riskOpen; renderRiskPanel(); return; }
         const b = e.target.closest('[data-gn]'), sel = document.querySelector('select[data-gn]');
         if (b && sel && sel._ss) sel._ss.setValue(b.dataset.gn);
       });
     }
+    initStackTables();
     initRiskMap();
     initDB();
     onData(() => {
@@ -310,7 +430,8 @@
       refreshRiskMap();
     });
   }
-  window.DG = { GN_LIST, dateStr, esc, officer, addOfficerPrompt, addActivityPrompt, fillActivityTypes, renderRiskPanel, enhanceSelect, onData,
+  window.DG = { GN_LIST, dateStr, esc, officer, addOfficerPrompt, addActivityPrompt, fillActivityTypes, renderRiskPanel, enhanceSelect, onData, pinIcon,
+    getPin: () => rPin ? { lat: rPin.lat, lng: rPin.lng } : null, clearPin,
     db: { cases, acts, officers: officersList, activityTypes: activityTypesList, add, remove, update, seedDemo, removeDemo } };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 })();

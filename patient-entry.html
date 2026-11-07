@@ -12,7 +12,7 @@
 <body>
 
   <nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top shadow-sm">
-    <div class="container-fluid px-4">
+    <div class="container-fluid px-3 px-sm-4">
       <a class="navbar-brand fw-bold" href="index.html"><i class="bi bi-shield-shaded text-danger me-2"></i>DengueGuard</a>
       <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation"><span class="navbar-toggler-icon"></span></button>
       <div class="collapse navbar-collapse" id="navbarNav">
@@ -43,6 +43,11 @@
               <div class="mb-3">
                 <label class="form-label fw-semibold" for="entryGN">GN Division</label>
                 <select id="entryGN" class="form-select" required data-gn data-placeholder="Type to search GN division..."><option value="">Select Division</option></select>
+              </div>
+              <div class="mb-3">
+                <label class="form-label fw-semibold">Patient Location Pin <span class="text-muted fw-normal">(optional)</span></label>
+                <div id="riskMap" data-pin="1"></div>
+                <div class="small text-muted mt-1">Colours show the past 7 days risk: <span class="badge dg-red">Red</span> <span class="badge dg-orange">Orange</span> <span class="badge dg-yellow">Yellow</span></div>
               </div>
               <div class="mb-3">
                 <label class="form-label fw-semibold" for="entryOfficer">Entered By (Officer)</label>
@@ -81,7 +86,7 @@
           </div>
           <div class="card-body p-0">
             <div class="table-responsive">
-              <table class="table table-hover align-middle mb-0">
+              <table class="dg-stack table table-hover align-middle mb-0">
                 <thead class="table-light">
                   <tr>
                     <th>Date</th>
@@ -98,13 +103,6 @@
           </div>
         </div>
       </div>
-    </div>
-    <div class="card border-0 shadow-sm mt-4">
-      <div class="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
-        <h5 class="fw-bold mb-0"><i class="bi bi-map-fill me-2 text-danger"></i>Yatinuwara MOH Area Risk Map</h5>
-        <div class="small"><span class="badge dg-red">Red</span> <span class="badge dg-orange">Orange</span> <span class="badge dg-yellow">Yellow</span> <span class="text-muted ms-1">past 7 days &middot; marked areas show name &amp; cases</span></div>
-      </div>
-      <div class="card-body p-0"><div id="riskMap"></div></div>
     </div>
   </div>
 
@@ -173,7 +171,7 @@
       tbody.innerHTML = records.slice(0, 200).map(r => `
         <tr>
           <td class="text-nowrap">${DG.esc(r.date)}</td>
-          <td class="fw-semibold">${DG.esc(r.gnArea)}</td>
+          <td class="fw-semibold">${DG.esc(r.gnArea)}${r.lat != null ? ' <i class="bi bi-geo-alt-fill text-danger" title="Pin location saved"></i>' : ''}</td>
           <td><span class="badge bg-danger">${DG.esc(r.count)}</span></td>
           <td><span class="badge bg-light text-dark border">${DG.esc(r.severity)}</span></td>
           <td class="small">${DG.esc(r.officerName || '-')}</td>
@@ -189,14 +187,17 @@
     document.getElementById('patientForm').addEventListener('submit', (e) => {
       e.preventDefault();
       const off = DG.officer(document.getElementById('entryOfficer').value);
-      const saved = DG.db.add('cases', {
+      const rec = {
         date: document.getElementById('entryDate').value,
         gnArea: document.getElementById('entryGN').value,
         count: Number(document.getElementById('entryCount').value),
         severity: document.getElementById('entrySeverity').value,
         officerId: off.id,
         officerName: off.name
-      });
+      };
+      const pin = DG.getPin();   // optional patient location pin (already checked to be inside the chosen GN division)
+      if (pin) { rec.lat = pin.lat; rec.lng = pin.lng; }
+      const saved = DG.db.add('cases', rec);
       if (!saved) return;   // not connected: keep what was typed
       if (weekSel !== 'ALL') weekSel = fmtD(mondayOf(document.getElementById('entryDate').value));   // show the week that was just saved to
       e.target.reset();
