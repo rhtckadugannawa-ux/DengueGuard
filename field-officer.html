@@ -7,6 +7,7 @@
   <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css">
   <style>
     body { background-color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; }
     .navbar { flex-wrap: wrap; row-gap: .4rem; }
@@ -17,7 +18,7 @@
 <body>
 
   <nav class="navbar navbar-dark bg-dark shadow-sm">
-    <div class="container-fluid px-4">
+    <div class="container-fluid px-3 px-sm-4">
       <span class="navbar-brand fw-bold mb-0"><i class="bi bi-shield-shaded text-danger me-2"></i>DengueGuard<span class="fw-normal text-white-50 portal-tag">&middot; Community Field Officer / ප්‍රජා ක්ෂේත්‍ර නිලධාරී</span></span>
       <span id="dbStatus" class="badge rounded-pill text-bg-secondary">Connecting... / සම්බන්ධ වෙමින් පවතී...</span>
     </div>
@@ -41,6 +42,13 @@
                 <label class="form-label fw-semibold" for="fGN">GN Division / ග්‍රාම නිලධාරී වසම</label>
                 <select id="fGN" class="form-select" required data-gn data-placeholder="Type to search GN division... / ග්‍රාම නිලධාරී වසම සෙවීමට ටයිප් කරන්න..."><option value="">Select Division / වසම තෝරන්න</option></select>
               </div>
+              <div id="mapSlotForm">
+                <div id="mapWrap" class="mb-3">
+                  <label class="form-label fw-semibold d-block">Area Covered on Map / සිතියමේ ආවරණය වූ ප්‍රදේශය <span class="text-muted fw-normal">(optional / විකල්ප)</span></label>
+                  <div id="riskMap" data-draw="1"></div>
+                  <div class="small text-muted mt-1">Colours show the past 7 days risk: <span class="badge dg-red">Red</span> <span class="badge dg-orange">Orange</span> <span class="badge dg-yellow">Yellow</span></div>
+                </div>
+              </div>
               <div class="mb-3">
                 <label class="form-label fw-semibold" for="fOfficer">Entered By (Officer) / ඇතුළත් කළේ (නිලධාරී)</label>
                 <div class="d-flex gap-2">
@@ -61,6 +69,7 @@
                       <option value="Adult Mosquito Survey">Adult Mosquito Survey / වැඩිහිටි මදුරු සමීක්ෂණය</option>
                       <option value="Thermal Fogging">Thermal Fogging / තාප දුමායනය</option>
                       <option value="Cold Fogging">Cold Fogging / ශීත දුමායනය</option>
+                      <option value="Indoor Fogging">Indoor Fogging / ගෘහස්ථ දුමායනය</option>
                       <option value="Larviciding (Chemical Spraying)">Larviciding (Chemical Spraying) / කීට නාශක යෙදීම (රසායනික ඉසීම)</option>
                       <option value="Notice Issued">Notice Issued / නිවේදන නිකුත් කිරීම</option>
                       <option value="Prosecuted / Legal Action">Prosecuted / Legal Action / නඩු පැවරීම / නීතිමය පියවර</option>
@@ -92,13 +101,14 @@
       </div>
 
       <div class="col-lg-7">
+        <div id="mapSlotSide"></div>
         <div class="card border-0 shadow-sm">
           <div class="card-header bg-white py-3">
             <h5 class="fw-bold mb-0">Community Operations Log / ප්‍රජා මෙහෙයුම් ලොගය</h5>
           </div>
           <div class="card-body p-0">
             <div class="table-responsive">
-              <table class="table table-hover align-middle mb-0">
+              <table class="dg-stack table table-hover align-middle mb-0">
                 <thead class="table-light">
                   <tr>
                     <th>Date / දිනය</th>
@@ -115,23 +125,19 @@
         </div>
       </div>
     </div>
-    <div class="card border-0 shadow-sm mt-4">
-      <div class="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
-        <h5 class="fw-bold mb-0"><i class="bi bi-map-fill me-2 text-danger"></i>Yatinuwara MOH Area Risk Map / අවදානම් සිතියම</h5>
-        <div class="small"><span class="badge dg-red">Red</span> <span class="badge dg-orange">Orange</span> <span class="badge dg-yellow">Yellow</span> <span class="text-muted ms-1">past 7 days &middot; marked areas show name &amp; cases</span></div>
-      </div>
-      <div class="card-body p-0"><div id="riskMap"></div></div>
-    </div>
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
   <script src="firebase-config.js"></script>
   <script src="geo-data.js"></script>
   <script src="common.js"></script>
   <script>
+    DG.autoPlaceMap('mapWrap', 'mapSlotForm', 'mapSlotSide');   // big map on the right (desktop) / under GN Division (phone)
     document.getElementById('fDate').value = DG.dateStr();
     document.getElementById('fDate').max = DG.dateStr();   // no future dates
 
@@ -147,7 +153,7 @@
       tbody.innerHTML = rows.slice(0, 200).map(r => `
         <tr>
           <td class="text-nowrap">${DG.esc(r.date)}</td>
-          <td class="fw-semibold">${DG.esc(r.gnArea)}</td>
+          <td class="fw-semibold">${DG.esc(r.gnArea)}${r.shape ? ' <i class="bi bi-bounding-box-circles text-primary" title="Area drawn on map"></i>' : ''}</td>
           <td>${DG.esc(r.activity)}</td>
           <td><span class="badge bg-success">${DG.esc(r.count)}</span></td>
           <td class="small">${DG.esc(r.officerName || '-')}${(r.larvae || r.breedingSites) ? `<div class="text-muted">${r.larvae ? DG.esc(r.larvae) + ' larvae+' : ''}${r.larvae && r.breedingSites ? ', ' : ''}${r.breedingSites ? DG.esc(r.breedingSites) + ' breeding sites' : ''}</div>` : ''}</td>
@@ -157,7 +163,7 @@
     document.getElementById('fieldForm').addEventListener('submit', (e) => {
       e.preventDefault();
       const off = DG.officer(document.getElementById('fOfficer').value);
-      const saved = DG.db.add('activities', {
+      const rec = {
         date: document.getElementById('fDate').value,
         gnArea: document.getElementById('fGN').value,
         officerType: 'Community',
@@ -168,7 +174,9 @@
         larvae: Number(document.getElementById('fLarvae').value || 0),
         breedingSites: Number(document.getElementById('fBreeding').value || 0),
         notes: document.getElementById('fNotes').value.trim()
-      });
+      };
+      Object.assign(rec, DG.getShape() || {});   // optional: drawn activity area (shape, shapeType, bufferM, areaM2)
+      const saved = DG.db.add('activities', rec);
       if (!saved) return;   // not connected: keep what was typed
       sessionIds.add(saved);
       e.target.reset();

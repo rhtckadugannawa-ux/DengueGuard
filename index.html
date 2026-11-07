@@ -29,6 +29,8 @@
     .mono { font-family: ui-monospace, Consolas, monospace; }
     #customRangeBox.show { display: flex !important; }
     @media (max-width: 575.98px) {
+      #weekBox { width: 100%; }
+      #weekBox select { flex: 1 1 auto; max-width: none !important; }
       #periodGroup { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; width: 100%; }
       #periodGroup .btn { border-radius: .375rem !important; margin: 0 !important; padding: .5rem .2rem; font-size: .9rem; }
       #customRangeBox.show { width: 100%; }
@@ -77,6 +79,11 @@
             <button type="button" class="btn btn-outline-dark" data-period="quarter">Quarterly</button>
             <button type="button" class="btn btn-outline-dark" data-period="year">Yearly</button>
             <button type="button" class="btn btn-outline-dark" data-period="custom">Custom</button>
+          </div>
+          <div id="weekBox" class="d-flex align-items-center gap-1" title="Choose which week (Monday to Sunday) to show">
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="weekPrev" title="Previous week"><i class="bi bi-chevron-left"></i></button>
+            <select id="weekSelect" class="form-select form-select-sm" style="width:auto;max-width:290px"></select>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="weekNext" title="Next week"><i class="bi bi-chevron-right"></i></button>
           </div>
           <div id="customRangeBox" class="d-none align-items-center gap-2 flex-wrap">
             <input type="date" id="customFrom" class="form-control form-control-sm" style="width:150px" title="Start date">
@@ -136,6 +143,10 @@
             <button type="button" class="btn btn-outline-dark" id="mapDownloadBtn" title="Download the map as a PNG image with the report title"><i class="bi bi-download me-1"></i>Download</button>
             <button type="button" class="btn btn-outline-dark" id="mapPrintBtn" title="Print the map with the report title"><i class="bi bi-printer me-1"></i>Print</button>
           </div>
+          <div class="d-flex align-items-center gap-1" title="Show only the areas drawn for this activity type">
+            <i class="bi bi-bounding-box-circles text-primary"></i>
+            <select id="actTypeFilter" class="form-select form-select-sm" style="width:auto;max-width:260px"><option value="ALL">All activity areas</option></select>
+          </div>
           <div class="form-check form-switch mb-0">
             <input class="form-check-input" type="checkbox" role="switch" id="showGreen">
             <label class="form-check-label small" for="showGreen">Show safe (green) areas</label>
@@ -143,6 +154,7 @@
         </div>
       </div>
       <div class="card-body p-0"><div id="dengueMap"></div></div>
+      <div id="areaLegend" class="px-3 py-2 small d-flex flex-wrap gap-3 border-top" style="display:none"></div>
     </div>
 
     <div class="row g-4 mb-4">
@@ -261,18 +273,39 @@
     let customRange = null;   // set when the user applies a custom date range: {label,title,bucket,n,w,from,to,isCustom:true}
     // "Weekly" always means the CURRENT calendar week, Monday through Sunday - recalculated every time it's
     // read, so the dashboard rolls over to the new week automatically the moment Monday begins (no manual reset needed).
-    function currentWeekRange() {
+    let weekMon = null;   // null = the current week (rolls over by itself); otherwise the Monday (yyyy-mm-dd) of the week chosen in the week picker
+    function thisMonday() {
       const now = new Date();
       const day = now.getDay();                    // 0 = Sun .. 6 = Sat
       const diff = day === 0 ? -6 : 1 - day;        // offset back to this week's Monday
-      const mon = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diff);
+      return new Date(now.getFullYear(), now.getMonth(), now.getDate() + diff);
+    }
+    function currentWeekRange() {
+      let mon = thisMonday();
+      if (weekMon) { const [y, m, d] = weekMon.split('-').map(Number); mon = new Date(y, m - 1, d); }
       const sun = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 6);
       return { from: fmtDate(mon), to: fmtDate(sun) };
+    }
+    function weekTitle(fromStr) {   // "Week 44 (Oct 26 \u2013 Nov 1)"
+      const f = new Date(fromStr + 'T00:00:00'), t = new Date(f); t.setDate(t.getDate() + 6);
+      return `Week ${isoWeekNo(f)} (${MONTHS[f.getMonth()]} ${f.getDate()} \u2013 ${MONTHS[t.getMonth()]} ${t.getDate()})`;
+    }
+    function fillWeekSelect() {
+      const sel = document.getElementById('weekSelect'), cur = thisMonday();
+      let html = '';
+      for (let i = 0; i < 60; i++) {
+        const d = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate() - 7 * i), v = fmtDate(d);
+        html += `<option value="${i === 0 ? 'cur' : v}">${i === 0 ? 'This week \u2013 ' : ''}${weekTitle(v)}</option>`;
+      }
+      sel.innerHTML = html;
+      sel.value = weekMon || 'cur';
+      document.getElementById('weekNext').disabled = sel.selectedIndex === 0;
+      document.getElementById('weekPrev').disabled = sel.selectedIndex >= sel.options.length - 1;
     }
     function curPeriod() {
       if (period === 'week') {
         const { from, to } = currentWeekRange();
-        return { label: 'Weekly', title: 'This Week (Mon\u2013Sun)', bucket: 'day', n: 7, w: 1, from, to, isCustom: true };
+        return { label: 'Weekly', title: weekMon ? weekTitle(from) : 'This Week (Mon\u2013Sun)', bucket: 'day', n: 7, w: 1, from, to, isCustom: true };
       }
       return (period === 'custom' && customRange) ? customRange : PERIODS[period];
     }
@@ -313,6 +346,7 @@
       return out;
     }
     const windowFrom = () => buckets()[0].from;
+    const windowTo = () => { const p = curPeriod(); return p.isCustom ? p.to : dateStr(0); };   // everything shown is limited to [from, to]
     const getRiskColor = n => level(n).color;
 
     // ===== DEMO DATA (stored in Firebase, tagged demo:true) =====
@@ -322,16 +356,16 @@
     // ===== 7-DAY STATS PER GN (today + previous 6 days) =====
     let stats = {}, selectedGN = 'ALL', showGreen = false;
     function computeStats() {
-      const from = windowFrom(), s = {};
+      const from = windowFrom(), to = windowTo(), s = {};
       const g = n => (s[n] = s[n] || { cases: 0, reports: 0, larvae: 0, breeding: 0 });
-      DG.db.cases().forEach(c => { if (c.date >= from) g(c.gnArea).cases += Number(c.count || 0); });
-      DG.db.acts().forEach(a => { if (a.date >= from) { const x = g(a.gnArea); x.reports++; x.larvae += Number(a.larvae || 0); x.breeding += Number(a.breedingSites || 0); } });
+      DG.db.cases().forEach(c => { if (c.date >= from && c.date <= to) g(c.gnArea).cases += Number(c.count || 0); });
+      DG.db.acts().forEach(a => { if (a.date >= from && a.date <= to) { const x = g(a.gnArea); x.reports++; x.larvae += Number(a.larvae || 0); x.breeding += Number(a.breedingSites || 0); } });
       return s;
     }
     const casesOf = n => (stats[n] && stats[n].cases) || 0;
 
     // ===== MAP =====
-    let map, gnLayer, mohBoundaryLayer, pinLayer;
+    let map, gnLayer, mohBoundaryLayer, pinLayer, areaLayer, areaItems = [];
 
     function riskStyle(feature) {
       const name = feature.properties.GND_N, n = casesOf(name), sel = name === selectedGN;
@@ -388,17 +422,53 @@
         style: { color: '#0f172a', weight: 3.5, dashArray: '8, 6', fill: false }
       }).addTo(map);
 
+      map.createPane('areaPane').style.zIndex = 430;   // activity areas: above the GN shapes, below the MOH outline and the pins
+      areaLayer = L.layerGroup().addTo(map);   // areas drawn on the health / field portals (fogging, surveys, ...)
       pinLayer = L.layerGroup().addTo(map);   // patient location pins (entered on the Daily Patient Entry page)
-      L.control.layers(baseMaps, { 'GN risk zones (95)': gnLayer, 'MOH boundary': mohBoundaryLayer, 'Patient pins': pinLayer }, { collapsed: window.innerWidth < 768 }).addTo(map);
+      L.control.layers(baseMaps, { 'GN risk zones (95)': gnLayer, 'MOH boundary': mohBoundaryLayer, 'Activity areas': areaLayer, 'Patient pins': pinLayer }, { collapsed: window.innerWidth < 768 }).addTo(map);
       map.fitBounds(mohBoundaryLayer.getBounds());
       setLabelMode();
       map.on('zoomend', setLabelMode);
     }
+    // ---- activity areas (drawn on the health / field portals): only those inside the shown period (+ GN filter), optionally one activity type ----
+    const ACT_TYPES_DEFAULT = ['Larval Survey', 'Adult Mosquito Survey', 'Thermal Fogging', 'Cold Fogging', 'Indoor Fogging', 'Premises Inspection', 'Shramadana Waste Clearing'];
+    function windowAreaActs() {   // all drawn areas in the period (before the type filter) - used for the filter counts
+      const from = windowFrom(), to = windowTo();
+      return DG.db.acts().filter(a => a.shape && a.date >= from && a.date <= to && (selectedGN === 'ALL' || a.gnArea === selectedGN));
+    }
+    function fillActFilter(inWindow) {
+      const sel = document.getElementById('actTypeFilter'), cur = sel.value || 'ALL', counts = {};
+      inWindow.forEach(a => { counts[a.activity] = (counts[a.activity] || 0) + 1; });
+      const types = [...new Set([...ACT_TYPES_DEFAULT, ...Object.keys(counts)])];
+      sel.innerHTML = `<option value="ALL">All activity areas (${inWindow.length})</option>` + types.map(t => `<option value="${esc(t)}">${esc(t)} (${counts[t] || 0})</option>`).join('');
+      sel.value = cur === 'ALL' || types.includes(cur) ? cur : 'ALL';
+    }
+    function renderAreas() {
+      if (!map || !areaLayer) return;
+      const inWindow = windowAreaActs();
+      fillActFilter(inWindow);
+      const t = document.getElementById('actTypeFilter').value;
+      areaLayer.clearLayers(); areaItems = [];
+      inWindow.filter(a => t === 'ALL' || a.activity === t).forEach(a => {
+        let g; try { g = JSON.parse(a.shape); } catch (e) { return; }
+        if (!g || !g.coordinates) return;
+        const col = DG.actColor(a.activity), n = Number(a.count || 0);
+        const ha = a.areaM2 ? (a.areaM2 >= 10000 ? (a.areaM2 / 10000).toFixed(2) + ' ha' : a.areaM2 + ' m\u00b2') : '';
+        L.geoJSON({ type: 'Feature', geometry: g, properties: {} }, { pane: 'areaPane', style: { color: col, weight: 2, fillColor: col, fillOpacity: 0.35 } })
+          .bindPopup(`<div style="font-size:13px"><b style="color:${col}">${esc(a.activity)}</b><br>${esc(a.gnArea)} &middot; ${esc(a.date)}${n ? '<br>' + n + ' unit' + (n === 1 ? '' : 's') : ''}${ha ? '<br>Area \u2248 ' + ha + (a.bufferM ? ' (buffer ' + a.bufferM + ' m)' : '') : ''}${a.officerName ? '<br><span class="text-muted">' + esc(a.officerName) + '</span>' : ''}${a.notes ? '<br><span class="text-muted">' + esc(a.notes) + '</span>' : ''}</div>`)
+          .addTo(areaLayer);
+        areaItems.push({ a, g, col });
+      });
+      const lg = document.getElementById('areaLegend'), used = [...new Set(areaItems.map(i => i.a.activity))];
+      lg.style.display = used.length ? 'flex' : 'none';
+      lg.innerHTML = used.length ? '<span class="text-muted fw-semibold">Activity areas:</span>' + used.map(u => `<span><span style="display:inline-block;width:14px;height:12px;border-radius:2px;background:${DG.actColor(u)};opacity:.8;vertical-align:-1px" class="me-1"></span>${esc(u)}</span>`).join('') : '';
+    }
+
     // ---- patient location pins: cases that have a lat/lng, inside the selected period (and GN filter) ----
     const PIN_COL = { DF: '#dc2626', DHF: '#7c3aed' };
     function pinCases() {
-      const from = windowFrom();
-      return DG.db.cases().filter(c => c.lat != null && c.lng != null && c.date >= from && (selectedGN === 'ALL' || c.gnArea === selectedGN));
+      const from = windowFrom(), to = windowTo();
+      return DG.db.cases().filter(c => c.lat != null && c.lng != null && c.date >= from && c.date <= to && (selectedGN === 'ALL' || c.gnArea === selectedGN));
     }
     function renderPins() {
       if (!map || !pinLayer) return;
@@ -412,6 +482,7 @@
     }
     function renderMapPolygons(zoom) {
       if (!map || !gnLayer) return;
+      renderAreas();
       renderPins();
       gnLayer.setStyle(riskStyle);
       setLabelMode();   // refresh labels whenever risk data changes
@@ -447,6 +518,7 @@
         ['#ef4444', `Red: ≥${5 * w} (High Alert)`], ['#f97316', `Orange: ${3 * w}-${5 * w - 1} (Moderate)`],
         ['#eab308', `Yellow: 1-${3 * w - 1} (Warning)`], ['#22c55e', 'Green: 0 cases (Safe)'], ['line', 'MOH boundary']
       ];
+      if (map.hasLayer(areaLayer)) [...new Set(areaItems.map(i => i.a.activity))].forEach(u => legend.push([DG.actColor(u), u + ' (area)']));
       if (map.hasLayer(pinLayer) && pinCases().length) legend.push(['pin', 'Patient pin (number = patients)']);
       // lay the legend out in rows first so the footer height fits
       const m = document.createElement('canvas').getContext('2d'); m.font = `12px ${FONT}`;
@@ -500,6 +572,15 @@
       mohBoundaryLayer.eachLayer(l => {
         ctx.beginPath(); trace(l.getLatLngs());
         ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 3.5; ctx.setLineDash([8, 6]); ctx.stroke(); ctx.setLineDash([]);
+      });
+      // activity areas (only when the "Activity areas" layer is switched on)
+      if (map.hasLayer(areaLayer)) areaItems.forEach(({ g, col }) => {
+        (g.type === 'Polygon' ? [g.coordinates] : g.coordinates).forEach(rings => {
+          ctx.beginPath();
+          rings.forEach(ring => { ring.forEach((c, i) => { const p = map.latLngToContainerPoint([c[1], c[0]]); if (i) ctx.lineTo(p.x, p.y); else ctx.moveTo(p.x, p.y); }); ctx.closePath(); });
+          ctx.globalAlpha = 0.35; ctx.fillStyle = col; ctx.fill('evenodd'); ctx.globalAlpha = 1;
+          ctx.setLineDash([]); ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.stroke();
+        });
       });
       // names: always for marked areas (with case count); safe areas only when zoomed in - same rule as the screen
       const zoomedIn = map.getZoom() >= 14, labels = [];
@@ -697,7 +778,7 @@
       { title: 'Larval Survey / Adult Mosquito Survey', icon: 'bi-bug', color: 'primary',
         types: ['Larval Survey', 'Adult Mosquito Survey'] },
       { title: 'Thermal or Cold Fogging / Larviciding Chemical Spraying', icon: 'bi-wind', color: 'warning',
-        types: ['Thermal Fogging', 'Cold Fogging', 'Larviciding (Chemical Spraying)', 'Fogging / Space Spraying'] },
+        types: ['Thermal Fogging', 'Cold Fogging', 'Indoor Fogging', 'Larviciding (Chemical Spraying)', 'Fogging / Space Spraying'] },
       { title: 'Notice Issued', icon: 'bi-file-earmark-text', color: 'info', types: ['Notice Issued', 'Red Notice Issued'] },
       { title: 'Prosecuted / Legal Action', icon: 'bi-hammer', color: 'danger', types: ['Prosecuted / Legal Action'] },
       { title: 'Community Awareness Programme', icon: 'bi-megaphone', color: 'success', types: ['Community Awareness Programme', 'Community Awareness'] }
@@ -722,7 +803,7 @@
       selectedGN = gn;
       stats = computeStats();
       const P = curPeriod(), w = P.w, from = windowFrom(), today = dateStr(0);
-      const match = r => gn === 'ALL' || r.gnArea === gn, inWin = r => r.date >= from;
+      const to = windowTo(), match = r => gn === 'ALL' || r.gnArea === gn, inWin = r => r.date >= from && r.date <= to;
       const cases = DG.db.cases().filter(match), acts = DG.db.acts().filter(match);
       const set = (id, v) => { document.getElementById(id).textContent = v; };
 
@@ -740,7 +821,7 @@
       set('statBreedingLabel', `POTENTIAL BREEDING SITES (${P.title.toUpperCase()})`);
       set('statBreeding', sum(acts.filter(inWin), a => a.breedingSites));
       set('statBreedingNote', `Identified ${P.title.toLowerCase()}`);
-      renderActionBoxes(acts.filter(r => r.date >= from && (!P.isCustom || r.date <= P.to)), P.title);
+      renderActionBoxes(acts.filter(inWin), P.title);
       set('legendRed', `Red: \u2265${5 * w} (High Alert)`);
       set('legendOrange', `Orange: ${3 * w}-${5 * w - 1} (Moderate)`);
       set('legendYellow', `Yellow: 1-${3 * w - 1} (Warning)`);
@@ -770,6 +851,7 @@
       document.getElementById('periodGroup').addEventListener('click', e => {
         const b = e.target.closest('[data-period]'); if (!b) return;
         period = b.dataset.period;
+        weekBox.classList.toggle('d-none', period !== 'week');
         document.querySelectorAll('#periodGroup .btn').forEach(x => x.classList.toggle('active', x === b));
         if (period === 'custom') {
           customBox.classList.remove('d-none'); customBox.classList.add('show');
@@ -788,9 +870,17 @@
         const bucket = days <= 62 ? 'day' : days <= 210 ? 'week' : 'month';
         customRange = { label: 'Custom', title: `${from} to ${to}`, bucket, n: days, w, from, to, isCustom: true };
         period = 'custom';
+        weekBox.classList.add('d-none');
         document.querySelectorAll('#periodGroup .btn').forEach(x => x.classList.toggle('active', x.dataset.period === 'custom'));
         updateDashboard(selectedGN, false);
       });
+      // week picker (Weekly view): choose the week whose cases, pins, activity areas and totals are shown
+      const weekSel = document.getElementById('weekSelect'), weekBox = document.getElementById('weekBox');
+      fillWeekSelect();
+      weekSel.addEventListener('change', () => { weekMon = weekSel.value === 'cur' ? null : weekSel.value; fillWeekSelect(); updateDashboard(selectedGN, false); });
+      document.getElementById('weekPrev').addEventListener('click', () => { if (weekSel.selectedIndex < weekSel.options.length - 1) { weekSel.selectedIndex++; weekSel.dispatchEvent(new Event('change')); } });
+      document.getElementById('weekNext').addEventListener('click', () => { if (weekSel.selectedIndex > 0) { weekSel.selectedIndex--; weekSel.dispatchEvent(new Event('change')); } });
+      document.getElementById('actTypeFilter').addEventListener('change', () => { renderAreas(); });
       document.getElementById('mapDownloadBtn').addEventListener('click', () => exportMap('download'));
       document.getElementById('mapPrintBtn').addEventListener('click', () => exportMap('print'));
       document.getElementById('showGreen').addEventListener('change', e => { showGreen = e.target.checked; renderMapPolygons(false); });
@@ -813,7 +903,7 @@
       let lastSeenDate = dateStr(0);
       setInterval(() => {
         const today = dateStr(0);
-        if (today !== lastSeenDate) { lastSeenDate = today; updateDashboard(selectedGN, false); }
+        if (today !== lastSeenDate) { lastSeenDate = today; fillWeekSelect(); updateDashboard(selectedGN, false); }
       }, 60000);
     });
   </script>

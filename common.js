@@ -139,12 +139,18 @@
     .dg-risk{max-height:300px;overflow-y:auto}
     #riskMap{height:520px;width:100%;border-radius:8px;z-index:1;background:#dbe4ee}
     .dg-pin{background:none !important;border:0 !important}.dg-pin svg{filter:drop-shadow(0 2px 2px rgba(0,0,0,.45));overflow:visible}
-    #riskMap[data-pin]{height:420px}
-    @media (min-width:992px){#riskMap[data-pin]{height:620px}}
+    #riskMap[data-pin],#riskMap[data-draw]{height:420px}
+    @media (min-width:992px){#riskMap[data-pin],#riskMap[data-draw]{height:620px}}
+    .dg-nopath path.leaflet-interactive{pointer-events:none !important}
+    #drawBar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:6px}
+    #drawBar .btn.active{background:#1d4ed8;color:#fff;border-color:#1d4ed8}
+    #drawBar input{width:76px}
+    #drawNote{font-size:13px;padding:6px 10px;border-radius:8px;background:#f1f5f9;margin-bottom:6px}
+    #drawNote.ok{background:#dcfce7}#drawNote.warn{background:#fee2e2;color:#991b1b}
     .dg-pinning,.dg-pinning .leaflet-interactive{cursor:crosshair !important}
     #pinBar{font-size:13px;padding:6px 10px;border-radius:8px;background:#f1f5f9;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
     #pinBar.ok{background:#dcfce7}#pinBar.warn{background:#fee2e2;color:#991b1b}
-    @media (max-width:767.98px){#riskMap[data-pin]{height:56vh;min-height:300px}}
+    @media (max-width:767.98px){#riskMap[data-pin],#riskMap[data-draw]{height:56vh;min-height:300px}}
     html{-webkit-text-size-adjust:100%}
     body{overflow-x:hidden}
     .dg-risk-head{cursor:default}
@@ -308,16 +314,26 @@
 
   // ---------- shared risk map (shown on the portal pages that contain <div id="riskMap">) ----------
   // Past-7-day risk is coloured by level; marked areas ALWAYS show their name + case count, safe areas show it on hover / when zoomed in.
-  // PIN MODE (<div id="riskMap" data-pin="1">, used on the patient-entry page): when a GN division is chosen in the form, the map zooms to
-  // ONLY that division and the officer can tap inside it to drop (and drag) a pin for the patient's location. DG.getPin() returns it.
+  // PIN MODE  (<div id="riskMap" data-pin="1">,  patient-entry page): choose a GN division -> map zooms to ONLY that division -> tap to drop a patient pin.
+  // DRAW MODE (<div id="riskMap" data-draw="1">, health / field portals): choose a GN division -> map zooms to it -> draw the area an activity covered
+  //            (circle / box / free shape / line) + optional buffer. DG.getShape() returns it for saving.
   const RISK_COL = { red: '#ef4444', orange: '#f97316', yellow: '#eab308' };
   const PIN_PATH = 'M14 1C7 1 1.5 6.5 1.5 13.4 1.5 22.8 14 37 14 37S26.5 22.8 26.5 13.4C26.5 6.5 21 1 14 1z';
   let rmap = null, rLayer = null, rMoh = null, rRisk = {}, rSel = '', rPin = null, rPinMarker = null;
-  const isPinMap = () => { const b = document.getElementById('riskMap'); return !!(b && b.dataset.pin); };
+  const mapMode = () => { const b = document.getElementById('riskMap'); return !b ? '' : b.dataset.pin ? 'pin' : b.dataset.draw ? 'draw' : ''; };
   function pinIcon(color, count) {
     const mid = count > 1 ? '<text x="14" y="17.5" text-anchor="middle" font-size="12" font-weight="700" fill="#fff" font-family="Arial,sans-serif">' + count + '</text>' : '<circle cx="14" cy="13.5" r="4.5" fill="#fff"/>';
     return L.divIcon({ className: 'dg-pin', iconSize: [28, 38], iconAnchor: [14, 37], popupAnchor: [0, -34],
       html: '<svg width="28" height="38" viewBox="0 0 28 38"><path d="' + PIN_PATH + '" fill="' + color + '" stroke="#fff" stroke-width="2"/>' + mid + '</svg>' });
+  }
+  // colour per activity type (same colours on the portal drawing and on the main dashboard map)
+  const ACT_COL = { 'Larval Survey': '#2563eb', 'Adult Mosquito Survey': '#0ea5e9', 'Thermal Fogging': '#f97316', 'Cold Fogging': '#06b6d4', 'Indoor Fogging': '#a855f7',
+    'Fogging / Space Spraying': '#f97316', 'Premises Inspection': '#16a34a', 'Shramadana Waste Clearing': '#92400e', 'Larviciding (Chemical Spraying)': '#db2777' };
+  const ACT_PALETTE = ['#ca8a04', '#0d9488', '#dc2626', '#4f46e5', '#65a30d', '#be123c', '#0369a1', '#7c3aed'];
+  function actColor(t) {
+    if (ACT_COL[t]) return ACT_COL[t];
+    let h = 0; String(t || '').split('').forEach(ch => { h = (h * 31 + ch.charCodeAt(0)) >>> 0; });
+    return ACT_PALETTE[h % ACT_PALETTE.length];
   }
   // point-in-polygon (ray casting) against the real GN boundary, so a pin can only be dropped inside the chosen division
   const ringHas = (ring, x, y) => { let r = false; for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) { const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) r = !r; } return r; };
@@ -329,7 +345,7 @@
   }
   function rStyle(f) {
     const name = f.properties.GND_N, r = rRisk[name];
-    if (rSel) {   // pin mode with a division chosen: hide every other division
+    if (rSel) {   // a division is chosen: hide every other division
       if (name !== rSel) return { fillOpacity: 0, opacity: 0, weight: 0 };
       return { fillColor: r ? RISK_COL[r.level] : '#22c55e', fillOpacity: r ? 0.3 : 0.1, color: '#0f172a', weight: 3, opacity: 1 };
     }
@@ -348,6 +364,8 @@
       if (!hide) l.bindTooltip(text, perm ? { permanent: true, direction: 'center', className: 'gn-label' } : { sticky: true, className: 'gn-label' });
     });
   }
+
+  // ----- PIN mode -----
   function pinBar(kind, html) {
     const bar = document.getElementById('pinBar'); if (!bar) return;
     bar.className = kind || ''; bar.innerHTML = html;
@@ -358,7 +376,7 @@
   function clearPin() {
     rPin = null;
     if (rPinMarker) { rPinMarker.remove(); rPinMarker = null; }
-    if (isPinMap()) pinHint();
+    if (mapMode() === 'pin') pinHint();
   }
   function placePin(ll) {
     rPin = { lat: +ll.lat.toFixed(6), lng: +ll.lng.toFixed(6) };
@@ -373,16 +391,125 @@
     pinOk();
   }
   const pinOk = () => pinBar('ok', '<span><i class="bi bi-geo-alt-fill text-danger"></i> Pin placed in <b>' + esc(rSel) + '</b> – drag it to adjust.</span><button type="button" class="btn btn-sm btn-outline-danger py-0" data-pin-clear>Remove pin</button>');
-  function setRiskSel(name) {   // called when the form's GN Division changes
-    if (!rmap || !isPinMap()) return;
-    name = name || '';
-    if (name === rSel && !rPin) return;
-    if (name !== rSel) clearPin();
-    rSel = name;
-    rmap.getContainer().classList.toggle('dg-pinning', !!rSel);
-    refreshRiskMap();
-    fitView(); pinHint();
+
+  // ----- DRAW mode (activity area) -----
+  let dRaw = null, dRes = null, dLayer = null, dRawLayer = null, dHandler = null, dTool = '', dBufTouched = false;
+  const TOOL_TIPS = {
+    circle: 'Circle: press on the centre and drag outwards, release to finish.',
+    box: 'Box: press on one corner and drag to the opposite corner, release to finish.',
+    polygon: 'Shape: tap each corner of the area, then tap the first point again (or press Finish) to close it.',
+    line: 'Line: tap the points along the road / lane, then tap the last point again (or press Finish). The buffer makes it a strip.'
+  };
+  const typeSelect = () => document.querySelector('select[data-acttype]');
+  function drawNote(kind, html) { const n = document.getElementById('drawNote'); if (n) { n.className = kind || ''; n.innerHTML = html; } }
+  const drawBuf = () => { const v = parseFloat((document.getElementById('drawBuf') || {}).value); return isFinite(v) && v > 0 ? Math.min(v, 2000) : 0; };
+  function drawUI() {   // enable / highlight the tool buttons and show the right hint
+    const bar = document.getElementById('drawBar'); if (!bar) return;
+    bar.querySelectorAll('[data-tool]').forEach(b => { b.disabled = !rSel; b.classList.toggle('active', b.dataset.tool === dTool); });
+    bar.querySelectorAll('[data-act="finish"],[data-act="undo"]').forEach(b => { b.style.display = (dTool === 'polygon' || dTool === 'line') ? '' : 'none'; });
+    bar.querySelector('[data-act="clear"]').style.display = (dRaw || dTool) ? '' : 'none';
+    if (!rSel) drawNote('', 'Choose the <b>GN Division</b> above – the map zooms to it, then draw the area covered by the activity <span class="text-muted">(optional)</span>.');
+    else if (dTool) drawNote('', TOOL_TIPS[dTool]);
+    else if (!dRes) drawNote('', 'Pick a tool (<b>Circle</b>, <b>Box</b>, <b>Shape</b> or <b>Line</b>) and draw the area covered inside <b>' + esc(rSel) + '</b> <span class="text-muted">(optional)</span>.');
   }
+  function buildShape() {
+    if (!dRaw || typeof turf === 'undefined') return null;
+    const b = drawBuf();
+    try {
+      if (dRaw.type === 'circle') return turf.circle(dRaw.center, (dRaw.radius + b) / 1000, { steps: 64, units: 'kilometers' });
+      if (dRaw.type === 'line') return turf.buffer(turf.lineString(dRaw.coords), Math.max(b, 5) / 1000, { units: 'kilometers', steps: 8 });
+      const p = turf.polygon([dRaw.ring]);
+      return b > 0 ? turf.buffer(p, b / 1000, { units: 'kilometers', steps: 8 }) : p;
+    } catch (e) { console.error('Shape build failed:', e); return null; }
+  }
+  function shapeLayers() {
+    if (dLayer) { dLayer.remove(); dLayer = null; }
+    if (dRawLayer) { dRawLayer.remove(); dRawLayer = null; }
+  }
+  function renderShape() {
+    shapeLayers();
+    dRes = buildShape();
+    if (!dRes) { drawUI(); return; }
+    const ts = typeSelect(), col = actColor(ts ? ts.value : '');
+    dLayer = L.geoJSON(dRes, { interactive: false, style: { color: col, weight: 3, fillColor: col, fillOpacity: 0.3 } }).addTo(rmap);
+    const rawF = dRaw.type === 'circle' ? turf.circle(dRaw.center, dRaw.radius / 1000, { steps: 64, units: 'kilometers' }) : dRaw.type === 'line' ? turf.lineString(dRaw.coords) : turf.polygon([dRaw.ring]);
+    dRawLayer = L.geoJSON(rawF, { interactive: false, style: { color: '#0f172a', weight: 2, dashArray: '5 5', fill: false } }).addTo(rmap);
+    const m2 = turf.area(dRes), area = m2 >= 10000 ? (m2 / 10000).toFixed(2) + ' ha' : Math.round(m2) + ' m²';
+    const names = { circle: 'Circle', box: 'Box', polygon: 'Shape', line: 'Line' };
+    drawNote('ok', '<i class="bi bi-check-circle-fill text-success"></i> Area marked: <b>' + names[dRaw.type] + '</b>' + (drawBuf() || dRaw.type === 'line' ? ' + ' + (dRaw.type === 'line' ? Math.max(drawBuf(), 5) : drawBuf()) + ' m buffer' : '') + ' ≈ <b>' + area + '</b>. Change the buffer or draw again to replace it.');
+    drawUI();
+  }
+  function stopTool() {
+    if (dHandler) { try { dHandler.disable(); } catch (e) { /* already off */ } dHandler = null; }
+    dTool = '';
+  }
+  function startTool(tool) {
+    if (!rSel || !rmap || !L.Draw) return;
+    const same = dTool === tool; stopTool();
+    if (same) { drawUI(); return; }   // pressing the active tool again switches it off
+    dTool = tool;
+    const so = { color: '#1d4ed8', weight: 2, fillOpacity: 0.15 };
+    if (tool === 'circle') dHandler = new L.Draw.Circle(rmap, { shapeOptions: so, showRadius: true, metric: true });
+    else if (tool === 'box') dHandler = new L.Draw.Rectangle(rmap, { shapeOptions: so, showArea: false, metric: true });
+    else if (tool === 'polygon') dHandler = new L.Draw.Polygon(rmap, { shapeOptions: so, showArea: false, metric: true });
+    else dHandler = new L.Draw.Polyline(rmap, { shapeOptions: { color: '#1d4ed8', weight: 4 }, metric: true });
+    dHandler.enable();
+    const bi = document.getElementById('drawBuf'); if (bi && !dBufTouched) bi.value = tool === 'line' ? 20 : 0;   // a line needs a width to become an area
+    drawUI();
+  }
+  function clearShape() {
+    stopTool(); shapeLayers(); dRaw = null; dRes = null; dBufTouched = false;
+    if (mapMode() === 'draw') drawUI();
+  }
+  function getShape() {
+    if (!dRes || !dRaw) return null;
+    const geom = JSON.stringify(dRes.geometry, (k, v) => typeof v === 'number' ? Math.round(v * 1e6) / 1e6 : v);   // stored as text (Firestore has no nested arrays)
+    return { shape: geom, shapeType: dRaw.type, bufferM: dRaw.type === 'line' ? Math.max(drawBuf(), 5) : drawBuf(), areaM2: Math.round(turf.area(dRes)) };
+  }
+  function initDrawUI(box) {
+    box.insertAdjacentHTML('beforebegin',
+      '<div id="drawBar">' +
+        '<div class="btn-group btn-group-sm" role="group">' +
+          '<button type="button" class="btn btn-outline-primary" data-tool="circle"><i class="bi bi-circle me-1"></i>Circle</button>' +
+          '<button type="button" class="btn btn-outline-primary" data-tool="box"><i class="bi bi-square me-1"></i>Box</button>' +
+          '<button type="button" class="btn btn-outline-primary" data-tool="polygon"><i class="bi bi-pentagon me-1"></i>Shape</button>' +
+          '<button type="button" class="btn btn-outline-primary" data-tool="line"><i class="bi bi-slash-lg me-1"></i>Line</button>' +
+        '</div>' +
+        '<label class="small mb-0 d-flex align-items-center gap-1" title="Extra width added around the drawn shape (a line becomes a strip this wide on each side)">Buffer <input type="number" id="drawBuf" class="form-control form-control-sm" min="0" max="2000" step="5" value="0"> m</label>' +
+        '<button type="button" class="btn btn-sm btn-success" data-act="finish" style="display:none">Finish</button>' +
+        '<button type="button" class="btn btn-sm btn-outline-secondary" data-act="undo" style="display:none">Undo point</button>' +
+        '<button type="button" class="btn btn-sm btn-outline-danger" data-act="clear" style="display:none">Clear</button>' +
+      '</div><div id="drawNote"></div>');
+    const bar = document.getElementById('drawBar');
+    bar.addEventListener('click', e => {
+      const t = e.target.closest('[data-tool]'), a = e.target.closest('[data-act]');
+      if (t) startTool(t.dataset.tool);
+      else if (a && a.dataset.act === 'finish') { try { dHandler && dHandler.completeShape(); } catch (x) { /* not enough points yet */ } }
+      else if (a && a.dataset.act === 'undo') { try { dHandler && dHandler.deleteLastVertex(); } catch (x) { /* nothing to undo */ } }
+      else if (a && a.dataset.act === 'clear') clearShape();
+    });
+    document.getElementById('drawBuf').addEventListener('input', () => { dBufTouched = true; if (dRaw) renderShape(); });
+    const ts = typeSelect(); if (ts) ts.addEventListener('change', () => { if (dRes) renderShape(); });
+    if (!L.Draw || typeof turf === 'undefined') {
+      bar.querySelectorAll('button,input').forEach(x => { x.disabled = true; });
+      drawNote('warn', 'Drawing tools could not load (check the internet connection and reload).');
+      return false;
+    }
+    // Leaflet.draw 1.0.4 has a bug in its area text with newer Leaflet; use our own text
+    if (L.GeometryUtil) L.GeometryUtil.readableArea = a => a >= 10000 ? (a / 10000).toFixed(2) + ' ha' : Math.round(a) + ' m²';
+    rmap.on(L.Draw.Event.CREATED, e => {
+      const l = e.layer, t = e.layerType;
+      if (t === 'circle') { const ll = l.getLatLng(); dRaw = { type: 'circle', center: [ll.lng, ll.lat], radius: l.getRadius() }; }
+      else if (t === 'polyline') dRaw = { type: 'line', coords: l.getLatLngs().map(p => [p.lng, p.lat]) };
+      else { const ring = l.getLatLngs()[0].map(p => [p.lng, p.lat]); ring.push(ring[0]); dRaw = { type: t === 'rectangle' ? 'box' : 'polygon', ring }; }
+      dHandler = null; dTool = '';
+      renderShape();
+    });
+    rmap.on(L.Draw.Event.DRAWSTOP, () => { dHandler = null; dTool = ''; drawUI(); });
+    return true;
+  }
+
+  // ----- selection (GN division chosen in the form) -----
   function fitView() {   // whole chosen GN division fills the map (or the whole MOH area when none is chosen)
     if (!rSel) { rmap.fitBounds(rMoh.getBounds()); return; }
     rLayer.eachLayer(l => { if (l.feature.properties.GND_N === rSel) { l.bringToFront(); rmap.fitBounds(l.getBounds(), { padding: [18, 18], maxZoom: 18 }); } });
@@ -392,11 +519,25 @@
     rmap.invalidateSize(); fitView();
     if (rPin && rPinMarker) rPinMarker.setLatLng([rPin.lat, rPin.lng]);
   }
+  function setRiskSel(name) {   // called when the form's GN Division changes
+    const mode = mapMode();
+    if (!rmap || !mode) return;
+    name = name || '';
+    if (name === rSel && !rPin && !dRaw) return;
+    if (name !== rSel) { clearPin(); clearShape(); }
+    rSel = name;
+    const cont = rmap.getContainer();
+    cont.classList.toggle('dg-pinning', mode === 'pin' && !!rSel);
+    cont.classList.toggle('dg-nopath', mode === 'draw' && !!rSel);   // while drawing, clicks must reach the map, not the hidden GN shapes
+    refreshRiskMap();
+    fitView();
+    if (mode === 'pin') pinHint(); else drawUI();
+  }
   function initRiskMap() {
     const box = document.getElementById('riskMap');
     if (!box || typeof L === 'undefined' || !window.GN_GEOJSON) return;
     try {
-      const pinMode = isPinMap();
+      const mode = mapMode(), pinMode = mode === 'pin', drawMode = mode === 'draw', selMode = pinMode || drawMode;
       if (pinMode) box.insertAdjacentHTML('beforebegin', '<div id="pinBar"></div>');
       rmap = L.map(box);
       L.control.layers(setupBase(rmap), null, { collapsed: true }).addTo(rmap);   // base map chooser: Street / Satellite / ...
@@ -405,13 +546,13 @@
         style: rStyle,
         onEachFeature(f, layer) {
           const name = f.properties.GND_N;
-          if (!pinMode) layer.bindPopup(() => { const r = rRisk[name]; return '<div style="font-size:13px"><b>' + esc(name) + '</b><br>Past 7 days: <b>' + (r ? r.cases + ' cases (' + r.level + ')' : '0 cases') + '</b><div class="mt-1 text-primary">Click also selects it in the form</div></div>'; });
+          if (!selMode) layer.bindPopup(() => { const r = rRisk[name]; return '<div style="font-size:13px"><b>' + esc(name) + '</b><br>Past 7 days: <b>' + (r ? r.cases + ' cases (' + r.level + ')' : '0 cases') + '</b><div class="mt-1 text-primary">Click also selects it in the form</div></div>'; });
           layer.on({
             mouseover: e => { if (!rSel) e.target.setStyle({ weight: 3, color: '#000' }); },
             mouseout: e => { if (!rSel) rLayer.resetStyle(e.target); },
             click: e => {
-              if (pinMode && rSel) return;   // a division is chosen: the map click below drops the pin
-              if (pinMode) L.DomEvent.stopPropagation(e);
+              if (selMode && rSel) return;   // a division is chosen: the map click below (pin) / the draw tool handles it
+              if (selMode) L.DomEvent.stopPropagation(e);
               const sel = document.querySelector('select[data-gn]'); if (sel && sel._ss) sel._ss.setValue(name);
             }
           });
@@ -428,14 +569,28 @@
           else pinBar('warn', '<span>That spot is outside <b>' + esc(rSel) + '</b> – tap inside the highlighted area.</span>');
         });
         document.getElementById('pinBar').addEventListener('click', e => { if (e.target.closest('[data-pin-clear]')) clearPin(); });
+      }
+      if (drawMode) { initDrawUI(box); drawUI(); }
+      if (selMode) {
         const sel = document.querySelector('select[data-gn]');
         if (sel) {
           sel.addEventListener('change', () => setRiskSel(sel.value));
-          if (sel.form) sel.form.addEventListener('reset', () => setTimeout(() => { clearPin(); setRiskSel(''); }, 0));
+          if (sel.form) sel.form.addEventListener('reset', () => setTimeout(() => { clearPin(); clearShape(); setRiskSel(''); }, 0));
         }
       }
       refreshRiskMap();
     } catch (e) { console.error('Risk map failed to load:', e); box.innerHTML = '<div class="p-4 text-center text-danger">Map could not load (Leaflet blocked or offline).</div>'; rmap = null; }
+  }
+  // big map on the RIGHT (above the log) on desktop; inside the form (under GN Division) on phones / tablets
+  function autoPlaceMap(wrapId, formSlotId, sideSlotId) {
+    const wrap = document.getElementById(wrapId), mq = window.matchMedia('(min-width: 992px)');
+    if (!wrap) return;
+    const place = () => {
+      document.getElementById(mq.matches ? sideSlotId : formSlotId).appendChild(wrap);
+      wrap.className = mq.matches ? 'card border-0 shadow-sm p-3 mb-4' : 'mb-3';
+      refreshMap();
+    };
+    place(); mq.addEventListener('change', place);
   }
 
   // ---------- init ----------
@@ -463,7 +618,7 @@
       refreshRiskMap();
     });
   }
-  window.DG = { GN_LIST, dateStr, esc, officer, addOfficerPrompt, addActivityPrompt, fillActivityTypes, renderRiskPanel, enhanceSelect, onData, pinIcon, setupBase, refreshMap,
+  window.DG = { GN_LIST, dateStr, esc, officer, addOfficerPrompt, addActivityPrompt, fillActivityTypes, renderRiskPanel, enhanceSelect, onData, pinIcon, setupBase, refreshMap, actColor, getShape, clearShape, autoPlaceMap,
     getPin: () => rPin ? { lat: rPin.lat, lng: rPin.lng } : null, clearPin,
     db: { cases, acts, officers: officersList, activityTypes: activityTypesList, add, remove, update, seedDemo, removeDemo } };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
