@@ -286,11 +286,13 @@
     const tl = (url, o) => L.tileLayer(url, Object.assign({ maxZoom: 19, crossOrigin: true, attribution: esriAttr }, o));
     const cartoOpt = { subdomains: 'abcd', maxZoom: 20, attribution: cartoAttr };
     const sat = () => tl(esri + 'World_Imagery/MapServer/tile/{z}/{y}/{x}');
+    const ref = p => tl(esri + 'Reference/' + p + '/MapServer/tile/{z}/{y}/{x}');   // transparent overlay tiles (roads / place names)
     return {
+      'Street + all places': tl('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }),   // most complete names: schools, temples, hospitals, shops...
       'Street + labels': tl(carto + 'voyager/{z}/{x}/{y}{r}.png', cartoOpt),
       'Street': tl(carto + 'voyager_nolabels/{z}/{x}/{y}{r}.png', cartoOpt),
+      'Satellite + roads + labels': L.layerGroup([sat(), ref('World_Transportation'), ref('World_Boundaries_and_Places')]),
       'Satellite': sat(),
-      'Satellite + labels': L.layerGroup([sat(), tl(esri + 'Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}')]),
       'Topographic': tl(esri + 'World_Topo_Map/MapServer/tile/{z}/{y}/{x}')
     };
   }
