@@ -279,6 +279,30 @@
     });
   }
 
+  // ---------- base maps (Street / Street + labels / Satellite / ...) shared by every map; the choice is remembered in this browser ----------
+  function baseLayers() {
+    const esri = 'https://server.arcgisonline.com/ArcGIS/rest/services/', esriAttr = 'Tiles &copy; Esri',
+      cartoAttr = '&copy; OpenStreetMap contributors &copy; CARTO', carto = 'https://{s}.basemaps.cartocdn.com/rastertiles/';
+    const tl = (url, o) => L.tileLayer(url, Object.assign({ maxZoom: 19, crossOrigin: true, attribution: esriAttr }, o));
+    const cartoOpt = { subdomains: 'abcd', maxZoom: 20, attribution: cartoAttr };
+    const sat = () => tl(esri + 'World_Imagery/MapServer/tile/{z}/{y}/{x}');
+    return {
+      'Street + labels': tl(carto + 'voyager/{z}/{x}/{y}{r}.png', cartoOpt),
+      'Street': tl(carto + 'voyager_nolabels/{z}/{x}/{y}{r}.png', cartoOpt),
+      'Satellite': sat(),
+      'Satellite + labels': L.layerGroup([sat(), tl(esri + 'Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}')]),
+      'Topographic': tl(esri + 'World_Topo_Map/MapServer/tile/{z}/{y}/{x}')
+    };
+  }
+  function setupBase(map) {   // adds the saved (or default) base map, remembers later changes, returns {name: layer} for L.control.layers
+    const base = baseLayers();
+    let name = 'Topographic';
+    try { const s = localStorage.getItem('dgBase'); if (s && base[s]) name = s; } catch (e) { /* storage blocked */ }
+    base[name].addTo(map);
+    map.on('baselayerchange', e => { try { localStorage.setItem('dgBase', e.name); } catch (e2) { /* storage blocked */ } });
+    return base;
+  }
+
   // ---------- shared risk map (shown on the portal pages that contain <div id="riskMap">) ----------
   // Past-7-day risk is coloured by level; marked areas ALWAYS show their name + case count, safe areas show it on hover / when zoomed in.
   // PIN MODE (<div id="riskMap" data-pin="1">, used on the patient-entry page): when a GN division is chosen in the form, the map zooms to
@@ -366,7 +390,7 @@
       const pinMode = isPinMap();
       if (pinMode) box.insertAdjacentHTML('beforebegin', '<div id="pinBar"></div>');
       rmap = L.map(box);
-      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', { attribution: 'Tiles &copy; Esri', maxZoom: 19 }).addTo(rmap);
+      L.control.layers(setupBase(rmap), null, { collapsed: true }).addTo(rmap);   // base map chooser: Street / Satellite / ...
       rmap.createPane('mohPane').style.zIndex = 450;
       rLayer = L.geoJSON(window.GN_GEOJSON, {
         style: rStyle,
@@ -430,7 +454,7 @@
       refreshRiskMap();
     });
   }
-  window.DG = { GN_LIST, dateStr, esc, officer, addOfficerPrompt, addActivityPrompt, fillActivityTypes, renderRiskPanel, enhanceSelect, onData, pinIcon,
+  window.DG = { GN_LIST, dateStr, esc, officer, addOfficerPrompt, addActivityPrompt, fillActivityTypes, renderRiskPanel, enhanceSelect, onData, pinIcon, setupBase,
     getPin: () => rPin ? { lat: rPin.lat, lng: rPin.lng } : null, clearPin,
     db: { cases, acts, officers: officersList, activityTypes: activityTypesList, add, remove, update, seedDemo, removeDemo } };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();

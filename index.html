@@ -367,9 +367,7 @@
     }
     function initMap() {
       map = L.map('dengueMap');
-      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', {
-        attribution: 'Tiles &copy; Esri', maxZoom: 19, crossOrigin: true
-      }).addTo(map);
+      const baseMaps = DG.setupBase(map);   // Street / Street + labels / Satellite / ... (choice is remembered)
       map.createPane('mohPane').style.zIndex = 450;   // MOH outline always above GN polygons
 
       gnLayer = L.geoJSON(GN_GEOJSON, {
@@ -391,7 +389,7 @@
       }).addTo(map);
 
       pinLayer = L.layerGroup().addTo(map);   // patient location pins (entered on the Daily Patient Entry page)
-      L.control.layers(null, { 'GN risk zones (95)': gnLayer, 'MOH boundary': mohBoundaryLayer, 'Patient pins': pinLayer }, { collapsed: window.innerWidth < 768 }).addTo(map);
+      L.control.layers(baseMaps, { 'GN risk zones (95)': gnLayer, 'MOH boundary': mohBoundaryLayer, 'Patient pins': pinLayer }, { collapsed: window.innerWidth < 768 }).addTo(map);
       map.fitBounds(mohBoundaryLayer.getBounds());
       setLabelMode();
       map.on('zoomend', setLabelMode);
