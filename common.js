@@ -139,7 +139,8 @@
     .dg-risk{max-height:300px;overflow-y:auto}
     #riskMap{height:520px;width:100%;border-radius:8px;z-index:1;background:#dbe4ee}
     .dg-pin{background:none !important;border:0 !important}.dg-pin svg{filter:drop-shadow(0 2px 2px rgba(0,0,0,.45));overflow:visible}
-    #riskMap[data-pin]{height:340px}
+    #riskMap[data-pin]{height:420px}
+    @media (min-width:992px){#riskMap[data-pin]{height:620px}}
     .dg-pinning,.dg-pinning .leaflet-interactive{cursor:crosshair !important}
     #pinBar{font-size:13px;padding:6px 10px;border-radius:8px;background:#f1f5f9;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
     #pinBar.ok{background:#dcfce7}#pinBar.warn{background:#fee2e2;color:#991b1b}
@@ -380,10 +381,16 @@
     rSel = name;
     rmap.getContainer().classList.toggle('dg-pinning', !!rSel);
     refreshRiskMap();
-    if (rSel) {
-      rLayer.eachLayer(l => { if (l.feature.properties.GND_N === rSel) { l.bringToFront(); rmap.fitBounds(l.getBounds(), { padding: [18, 18], maxZoom: 17 }); } });
-      pinHint();
-    } else { rmap.fitBounds(rMoh.getBounds()); pinHint(); }
+    fitView(); pinHint();
+  }
+  function fitView() {   // whole chosen GN division fills the map (or the whole MOH area when none is chosen)
+    if (!rSel) { rmap.fitBounds(rMoh.getBounds()); return; }
+    rLayer.eachLayer(l => { if (l.feature.properties.GND_N === rSel) { l.bringToFront(); rmap.fitBounds(l.getBounds(), { padding: [18, 18], maxZoom: 18 }); } });
+  }
+  function refreshMap() {   // call after the map box was moved / resized
+    if (!rmap) return;
+    rmap.invalidateSize(); fitView();
+    if (rPin && rPinMarker) rPinMarker.setLatLng([rPin.lat, rPin.lng]);
   }
   function initRiskMap() {
     const box = document.getElementById('riskMap');
@@ -456,7 +463,7 @@
       refreshRiskMap();
     });
   }
-  window.DG = { GN_LIST, dateStr, esc, officer, addOfficerPrompt, addActivityPrompt, fillActivityTypes, renderRiskPanel, enhanceSelect, onData, pinIcon, setupBase,
+  window.DG = { GN_LIST, dateStr, esc, officer, addOfficerPrompt, addActivityPrompt, fillActivityTypes, renderRiskPanel, enhanceSelect, onData, pinIcon, setupBase, refreshMap,
     getPin: () => rPin ? { lat: rPin.lat, lng: rPin.lng } : null, clearPin,
     db: { cases, acts, officers: officersList, activityTypes: activityTypesList, add, remove, update, seedDemo, removeDemo } };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();

@@ -44,10 +44,12 @@
                 <label class="form-label fw-semibold" for="entryGN">GN Division</label>
                 <select id="entryGN" class="form-select" required data-gn data-placeholder="Type to search GN division..."><option value="">Select Division</option></select>
               </div>
-              <div class="mb-3">
-                <label class="form-label fw-semibold">Patient Location Pin <span class="text-muted fw-normal">(optional)</span></label>
-                <div id="riskMap" data-pin="1"></div>
-                <div class="small text-muted mt-1">Colours show the past 7 days risk: <span class="badge dg-red">Red</span> <span class="badge dg-orange">Orange</span> <span class="badge dg-yellow">Yellow</span></div>
+              <div id="pinSlotForm">
+                <div id="pinWrap" class="mb-3">
+                  <label class="form-label fw-semibold d-block">Patient Location Pin <span class="text-muted fw-normal">(optional)</span></label>
+                  <div id="riskMap" data-pin="1"></div>
+                  <div class="small text-muted mt-1">Colours show the past 7 days risk: <span class="badge dg-red">Red</span> <span class="badge dg-orange">Orange</span> <span class="badge dg-yellow">Yellow</span></div>
+                </div>
               </div>
               <div class="mb-3">
                 <label class="form-label fw-semibold" for="entryOfficer">Entered By (Officer)</label>
@@ -75,6 +77,7 @@
       </div>
 
       <div class="col-lg-7">
+        <div id="pinSlotSide"></div>
         <div class="card border-0 shadow-sm">
           <div class="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
             <h5 class="fw-bold mb-0">Patient Notification Registry</h5>
@@ -114,6 +117,16 @@
   <script src="geo-data.js"></script>
   <script src="common.js"></script>
   <script>
+    // Map placement: big map on the RIGHT (above the patient list) on desktop; inside the form (under GN Division) on phones/tablets
+    const pinWrap = document.getElementById('pinWrap'), wide = window.matchMedia('(min-width: 992px)');
+    function placeMap() {
+      document.getElementById(wide.matches ? 'pinSlotSide' : 'pinSlotForm').appendChild(pinWrap);
+      pinWrap.className = wide.matches ? 'card border-0 shadow-sm p-3 mb-4' : 'mb-3';
+      DG.refreshMap();
+    }
+    placeMap();
+    wide.addEventListener('change', placeMap);
+
     document.getElementById('entryDate').value = DG.dateStr();
     document.getElementById('entryDate').max = DG.dateStr();   // no future dates
 
