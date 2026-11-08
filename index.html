@@ -7,6 +7,7 @@
   <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css">
   <style>
     body { background: #f8fafc; font-family: system-ui, -apple-system, sans-serif; }
     .risk-badge-red { background: #ef4444; color: #fff; }
@@ -139,6 +140,7 @@
           <span class="badge bg-dark px-2 py-1 text-wrap text-start"><i class="bi bi-layers-half me-1"></i>Dual-Layer Active (GN Areas + MOH Boundary)</span>
         </div>
         <div class="d-flex flex-wrap align-items-center gap-3">
+          <button type="button" class="btn btn-sm btn-primary" id="drawToggle" title="Draw the area covered by a fogging / survey / clean-up directly on this map"><i class="bi bi-pencil-square me-1"></i>Add activity area</button>
           <div class="btn-group btn-group-sm" role="group" aria-label="Map export">
             <button type="button" class="btn btn-outline-dark" id="mapDownloadBtn" title="Download the map as a PNG image with the report title"><i class="bi bi-download me-1"></i>Download</button>
             <button type="button" class="btn btn-outline-dark" id="mapPrintBtn" title="Print the map with the report title"><i class="bi bi-printer me-1"></i>Print</button>
@@ -156,6 +158,24 @@
             <label class="form-check-label small" for="showGreen">Show safe (green) areas</label>
           </div>
         </div>
+      </div>
+      <div id="drawPanel" class="px-3 py-3 border-bottom bg-light d-none">
+        <div class="fw-bold mb-2"><i class="bi bi-pencil-square me-1 text-primary"></i>Add activity area <span class="text-muted fw-normal small">&ndash; choose the type, choose the GN Division (the map zooms to it), pick a shape and draw the area covered</span></div>
+        <div class="row g-2 align-items-end">
+          <div class="col-12 col-md-3"><label class="form-label small fw-semibold mb-1" for="dpType">Activity type</label>
+            <select id="dpType" class="form-select form-select-sm"><option value="Larval Survey">Larval Survey</option><option value="Adult Mosquito Survey">Adult Mosquito Survey</option><option value="Thermal Fogging">Thermal Fogging</option><option value="Cold Fogging">Cold Fogging</option><option value="Indoor Fogging">Indoor Fogging</option><option value="Premises Inspection">Premises Inspection</option><option value="Shramadana Waste Clearing">Shramadana Waste Clearing</option><option value="Larviciding (Chemical Spraying)">Larviciding (Chemical Spraying)</option></select></div>
+          <div class="col-6 col-md-2"><label class="form-label small fw-semibold mb-1" for="dpDate">Date</label><input type="date" id="dpDate" class="form-control form-control-sm"></div>
+          <div class="col-6 col-md-2"><label class="form-label small fw-semibold mb-1" for="dpCount">Units covered</label><input type="number" id="dpCount" min="1" class="form-control form-control-sm" placeholder="e.g. 25"></div>
+          <div class="col-12 col-md-5"><label class="form-label small fw-semibold mb-1" for="dpGN">GN Division</label>
+            <select id="dpGN" class="form-select form-select-sm" data-placeholder="Type to search GN division..."><option value="">Select GN Division</option></select></div>
+          <div class="col-12 col-md-5"><label class="form-label small fw-semibold mb-1" for="dpOfficer">Officer</label>
+            <div class="d-flex gap-1"><div class="flex-grow-1"><select id="dpOfficer" class="form-select form-select-sm" data-officer data-roles="*" data-placeholder="Select officer..."><option value="">Select Officer</option></select></div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" title="Add new officer" onclick="DG.addOfficerPrompt('Health', 'dpOfficer')"><i class="bi bi-person-plus"></i></button></div></div>
+          <div class="col-12 col-md-4"><label class="form-label small fw-semibold mb-1" for="dpNotes">Notes <span class="text-muted fw-normal">(optional)</span></label><input type="text" id="dpNotes" class="form-control form-control-sm" maxlength="120"></div>
+          <div class="col-12 col-md-3 d-flex gap-2"><button type="button" class="btn btn-sm btn-success flex-grow-1" id="dpSave"><i class="bi bi-save me-1"></i>Save area</button><button type="button" class="btn btn-sm btn-outline-secondary" id="dpClose">Close</button></div>
+        </div>
+        <div class="mt-3" id="drawAnchor"></div>
+        <div id="dpMsg" class="small mt-2"></div>
       </div>
       <div class="card-body p-0"><div id="dengueMap"></div></div>
       <div id="areaLegend" class="px-3 py-2 small d-flex flex-wrap gap-3 border-top" style="display:none"></div>
@@ -239,6 +259,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
   <script src="firebase-config.js"></script>
@@ -370,6 +392,7 @@
 
     // ===== MAP =====
     let map, gnLayer, mohBoundaryLayer, pinLayer, areaLayer, areaItems = [];
+    let drawTool = null, lastDrawGN = 'ALL';   // the activity-area drawing tool on this map (created the first time the panel is opened)
 
     function riskStyle(feature) {
       const name = feature.properties.GND_N, n = casesOf(name), sel = name === selectedGN;
@@ -915,6 +938,10 @@
       renderCharts(cases, acts);
       renderStream(acts.filter(inWin));
       renderMapPolygons(zoom);
+      // keep the drawing panel's GN box in step with the GN filter; a half-drawn shape belongs to one GN, so drop it if the GN changes
+      const dpGN = document.getElementById('dpGN');
+      if (dpGN && dpGN.value !== (gn === 'ALL' ? '' : gn)) { dpGN.value = gn === 'ALL' ? '' : gn; if (dpGN._ss) dpGN._ss.refresh(); }
+      if (drawTool && lastDrawGN !== gn) { lastDrawGN = gn; drawTool.clear(); }
     }
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -965,6 +992,46 @@
       document.getElementById('weekNext').addEventListener('click', () => { if (weekSel.selectedIndex > 0) { weekSel.selectedIndex--; weekSel.dispatchEvent(new Event('change')); } });
       document.getElementById('actTypeFilter').addEventListener('change', () => { renderAreas(); });
       document.getElementById('showNames').addEventListener('change', () => setLabelMode());
+
+      // ===== Add activity area: draw directly on the main map =====
+      const dp = document.getElementById('drawPanel'), dpGN = document.getElementById('dpGN'), dpType = document.getElementById('dpType'),
+            dpDate = document.getElementById('dpDate'), dpCount = document.getElementById('dpCount'), dpOfficer = document.getElementById('dpOfficer'), dpNotes = document.getElementById('dpNotes');
+      Object.keys(GN_INFO).sort((a, b) => a.localeCompare(b)).forEach(n => dpGN.appendChild(new Option(n, n)));
+      DG.enhanceSelect(dpGN);
+      dpDate.value = dateStr(0); dpDate.max = dateStr(0);
+      const dpMsg = (kind, text) => { const m = document.getElementById('dpMsg'); m.className = 'small mt-2 text-' + kind; m.textContent = text || ''; };
+      dpGN.addEventListener('change', () => selectGN(dpGN.value || 'ALL', true));   // choosing the GN here also zooms the map to it
+      dpType.addEventListener('change', () => { if (drawTool) drawTool.recolor(); });
+      function openDraw(open) {
+        if (open && !map) { alert('The map is not available.'); return; }
+        dp.classList.toggle('d-none', !open);
+        document.getElementById('drawToggle').classList.toggle('active', open);
+        if (map) map.getContainer().classList.toggle('dg-nopath', open);   // while drawing, clicks must reach the drawing tool, not the GN shapes underneath
+        if (open && !drawTool) {
+          drawTool = DG.createDrawTool({ map, anchor: document.getElementById('drawAnchor'), getSel: () => selectedGN === 'ALL' ? '' : selectedGN, getType: () => dpType.value });
+          lastDrawGN = selectedGN;
+        }
+        if (!open && drawTool) drawTool.clear();
+        if (open) { dpMsg('muted', ''); dp.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); if (drawTool) drawTool.ui(); }
+      }
+      document.getElementById('drawToggle').addEventListener('click', () => openDraw(dp.classList.contains('d-none')));
+      document.getElementById('dpClose').addEventListener('click', () => openDraw(false));
+      document.getElementById('dpSave').addEventListener('click', () => {
+        const gn = selectedGN === 'ALL' ? '' : selectedGN, type = dpType.value, date = dpDate.value, count = Number(dpCount.value), off = DG.officer(dpOfficer.value);
+        if (!gn) return dpMsg('danger', 'Choose the GN Division first.');
+        const shp = drawTool && drawTool.getShape();
+        if (!shp) return dpMsg('danger', 'Draw the area on the map first (Circle / Box / Shape / Line).');
+        if (!date) return dpMsg('danger', 'Pick the date.');
+        if (!(count >= 1)) return dpMsg('danger', 'Enter how many units / premises were covered.');
+        if (!off.id) return dpMsg('danger', 'Select the officer.');
+        const rec = { date, gnArea: gn, officerType: off.role === 'Community' ? 'Community' : 'Health', activity: type, count, officerId: off.id, officerName: off.name,
+          inspected: off.role !== 'Community' && ['Premises Inspection', 'Larval Survey'].includes(type) ? count : null, larvae: 0, breedingSites: 0, notes: dpNotes.value.trim() };
+        Object.assign(rec, shp);
+        if (!DG.db.add('activities', rec)) return;   // not connected: nothing saved, keep what was drawn
+        drawTool.clear(); dpCount.value = ''; dpNotes.value = '';
+        const shown = date >= windowFrom() && date <= windowTo();
+        dpMsg('success', 'Saved. ' + (shown ? 'The area now shows on the map.' : 'Its date is outside the period shown now \u2013 change the week / period to see it.'));
+      });
       document.getElementById('mapDownloadBtn').addEventListener('click', () => exportMap('download'));
       document.getElementById('mapPrintBtn').addEventListener('click', () => exportMap('print'));
       document.getElementById('showGreen').addEventListener('change', e => { showGreen = e.target.checked; renderMapPolygons(false); });

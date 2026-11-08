@@ -319,7 +319,7 @@
   //            (circle / box / free shape / line) + optional buffer. DG.getShape() returns it for saving.
   const RISK_COL = { red: '#ef4444', orange: '#f97316', yellow: '#eab308' };
   const PIN_PATH = 'M14 1C7 1 1.5 6.5 1.5 13.4 1.5 22.8 14 37 14 37S26.5 22.8 26.5 13.4C26.5 6.5 21 1 14 1z';
-  let rmap = null, rLayer = null, rMoh = null, rRisk = {}, rSel = '', rPin = null, rPinMarker = null;
+  let rmap = null, rLayer = null, rMoh = null, rRisk = {}, rSel = '', rPin = null, rPinMarker = null, drawer = null;
   const mapMode = () => { const b = document.getElementById('riskMap'); return !b ? '' : b.dataset.pin ? 'pin' : b.dataset.draw ? 'draw' : ''; };
   function pinIcon(color, count) {
     const mid = count > 1 ? '<text x="14" y="17.5" text-anchor="middle" font-size="12" font-weight="700" fill="#fff" font-family="Arial,sans-serif">' + count + '</text>' : '<circle cx="14" cy="13.5" r="4.5" fill="#fff"/>';
@@ -392,95 +392,86 @@
   }
   const pinOk = () => pinBar('ok', '<span><i class="bi bi-geo-alt-fill text-danger"></i> Pin placed in <b>' + esc(rSel) + '</b> – drag it to adjust.</span><button type="button" class="btn btn-sm btn-outline-danger py-0" data-pin-clear>Remove pin</button>');
 
-  // ----- DRAW mode (activity area) -----
-  let dRaw = null, dRes = null, dLayer = null, dRawLayer = null, dHandler = null, dTool = '', dBufTouched = false;
+  const typeSelect = () => document.querySelector('select[data-acttype]');
+  // ----- DRAW tool (activity area): a self-contained tool that can be attached to ANY Leaflet map (portal map or the main dashboard map) -----
+  // createDrawTool({ map, anchor, getSel, getType }): map = Leaflet map; anchor = element the tool bar is inserted before;
+  // getSel() = the chosen GN division name ('' = none -> tools stay disabled); getType() = activity type (colours the shape).
+  // Returns { getShape, clear, ui, recolor }.
   const TOOL_TIPS = {
     circle: 'Circle: press on the centre and drag outwards, release to finish.',
     box: 'Box: press on one corner and drag to the opposite corner, release to finish.',
     polygon: 'Shape: tap each corner of the area, then tap the first point again (or press Finish) to close it.',
     line: 'Line: tap the points along the road / lane, then tap the last point again (or press Finish). The buffer makes it a strip.'
   };
-  const typeSelect = () => document.querySelector('select[data-acttype]');
-  function drawNote(kind, html) { const n = document.getElementById('drawNote'); if (n) { n.className = kind || ''; n.innerHTML = html; } }
-  const drawBuf = () => { const v = parseFloat((document.getElementById('drawBuf') || {}).value); return isFinite(v) && v > 0 ? Math.min(v, 2000) : 0; };
-  function drawUI() {   // enable / highlight the tool buttons and show the right hint
-    const bar = document.getElementById('drawBar'); if (!bar) return;
-    bar.querySelectorAll('[data-tool]').forEach(b => { b.disabled = !rSel; b.classList.toggle('active', b.dataset.tool === dTool); });
-    bar.querySelectorAll('[data-act="finish"],[data-act="undo"]').forEach(b => { b.style.display = (dTool === 'polygon' || dTool === 'line') ? '' : 'none'; });
-    bar.querySelector('[data-act="clear"]').style.display = (dRaw || dTool) ? '' : 'none';
-    if (!rSel) drawNote('', 'Choose the <b>GN Division</b> above – the map zooms to it, then draw the area covered by the activity <span class="text-muted">(optional)</span>.');
-    else if (dTool) drawNote('', TOOL_TIPS[dTool]);
-    else if (!dRes) drawNote('', 'Pick a tool (<b>Circle</b>, <b>Box</b>, <b>Shape</b> or <b>Line</b>) and draw the area covered inside <b>' + esc(rSel) + '</b> <span class="text-muted">(optional)</span>.');
-  }
-  function buildShape() {
-    if (!dRaw || typeof turf === 'undefined') return null;
-    const b = drawBuf();
-    try {
-      if (dRaw.type === 'circle') return turf.circle(dRaw.center, (dRaw.radius + b) / 1000, { steps: 64, units: 'kilometers' });
-      if (dRaw.type === 'line') return turf.buffer(turf.lineString(dRaw.coords), Math.max(b, 5) / 1000, { units: 'kilometers', steps: 8 });
-      const p = turf.polygon([dRaw.ring]);
-      return b > 0 ? turf.buffer(p, b / 1000, { units: 'kilometers', steps: 8 }) : p;
-    } catch (e) { console.error('Shape build failed:', e); return null; }
-  }
-  function shapeLayers() {
-    if (dLayer) { dLayer.remove(); dLayer = null; }
-    if (dRawLayer) { dRawLayer.remove(); dRawLayer = null; }
-  }
-  function renderShape() {
-    shapeLayers();
-    dRes = buildShape();
-    if (!dRes) { drawUI(); return; }
-    const ts = typeSelect(), col = actColor(ts ? ts.value : '');
-    dLayer = L.geoJSON(dRes, { interactive: false, style: { color: col, weight: 3, fillColor: col, fillOpacity: 0.3 } }).addTo(rmap);
-    const rawF = dRaw.type === 'circle' ? turf.circle(dRaw.center, dRaw.radius / 1000, { steps: 64, units: 'kilometers' }) : dRaw.type === 'line' ? turf.lineString(dRaw.coords) : turf.polygon([dRaw.ring]);
-    dRawLayer = L.geoJSON(rawF, { interactive: false, style: { color: '#0f172a', weight: 2, dashArray: '5 5', fill: false } }).addTo(rmap);
-    const m2 = turf.area(dRes), area = m2 >= 10000 ? (m2 / 10000).toFixed(2) + ' ha' : Math.round(m2) + ' m²';
-    const names = { circle: 'Circle', box: 'Box', polygon: 'Shape', line: 'Line' };
-    drawNote('ok', '<i class="bi bi-check-circle-fill text-success"></i> Area marked: <b>' + names[dRaw.type] + '</b>' + (drawBuf() || dRaw.type === 'line' ? ' + ' + (dRaw.type === 'line' ? Math.max(drawBuf(), 5) : drawBuf()) + ' m buffer' : '') + ' ≈ <b>' + area + '</b>. Change the buffer or draw again to replace it.');
-    drawUI();
-  }
-  function stopTool() {
-    if (dHandler) { try { dHandler.disable(); } catch (e) { /* already off */ } dHandler = null; }
-    dTool = '';
-  }
-  function startTool(tool) {
-    if (!rSel || !rmap || !L.Draw) return;
-    const same = dTool === tool; stopTool();
-    if (same) { drawUI(); return; }   // pressing the active tool again switches it off
-    dTool = tool;
-    const so = { color: '#1d4ed8', weight: 2, fillOpacity: 0.15 };
-    if (tool === 'circle') dHandler = new L.Draw.Circle(rmap, { shapeOptions: so, showRadius: true, metric: true });
-    else if (tool === 'box') dHandler = new L.Draw.Rectangle(rmap, { shapeOptions: so, showArea: false, metric: true });
-    else if (tool === 'polygon') dHandler = new L.Draw.Polygon(rmap, { shapeOptions: so, showArea: false, metric: true });
-    else dHandler = new L.Draw.Polyline(rmap, { shapeOptions: { color: '#1d4ed8', weight: 4 }, metric: true });
-    dHandler.enable();
-    const bi = document.getElementById('drawBuf'); if (bi && !dBufTouched) bi.value = tool === 'line' ? 20 : 0;   // a line needs a width to become an area
-    drawUI();
-  }
-  function clearShape() {
-    stopTool(); shapeLayers(); dRaw = null; dRes = null; dBufTouched = false;
-    if (mapMode() === 'draw') drawUI();
-  }
-  function getShape() {
-    if (!dRes || !dRaw) return null;
-    const geom = JSON.stringify(dRes.geometry, (k, v) => typeof v === 'number' ? Math.round(v * 1e6) / 1e6 : v);   // stored as text (Firestore has no nested arrays)
-    return { shape: geom, shapeType: dRaw.type, bufferM: dRaw.type === 'line' ? Math.max(drawBuf(), 5) : drawBuf(), areaM2: Math.round(turf.area(dRes)) };
-  }
-  function initDrawUI(box) {
-    box.insertAdjacentHTML('beforebegin',
-      '<div id="drawBar">' +
-        '<div class="btn-group btn-group-sm" role="group">' +
-          '<button type="button" class="btn btn-outline-primary" data-tool="circle"><i class="bi bi-circle me-1"></i>Circle</button>' +
-          '<button type="button" class="btn btn-outline-primary" data-tool="box"><i class="bi bi-square me-1"></i>Box</button>' +
-          '<button type="button" class="btn btn-outline-primary" data-tool="polygon"><i class="bi bi-pentagon me-1"></i>Shape</button>' +
-          '<button type="button" class="btn btn-outline-primary" data-tool="line"><i class="bi bi-slash-lg me-1"></i>Line</button>' +
-        '</div>' +
-        '<label class="small mb-0 d-flex align-items-center gap-1" title="Extra width added around the drawn shape (a line becomes a strip this wide on each side)">Buffer <input type="number" id="drawBuf" class="form-control form-control-sm" min="0" max="2000" step="5" value="0"> m</label>' +
-        '<button type="button" class="btn btn-sm btn-success" data-act="finish" style="display:none">Finish</button>' +
-        '<button type="button" class="btn btn-sm btn-outline-secondary" data-act="undo" style="display:none">Undo point</button>' +
-        '<button type="button" class="btn btn-sm btn-outline-danger" data-act="clear" style="display:none">Clear</button>' +
-      '</div><div id="drawNote"></div>');
+  function createDrawTool(o) {
+    const rmap = o.map, sel = () => o.getSel() || '', typ = () => o.getType() || '';
+    let dRaw = null, dRes = null, dLayer = null, dRawLayer = null, dHandler = null, dTool = '', dBufTouched = false;
+    anchorBar(o.anchor);
     const bar = document.getElementById('drawBar');
+    function drawNote(kind, html) { const n = document.getElementById('drawNote'); if (n) { n.className = kind || ''; n.innerHTML = html; } }
+    const drawBuf = () => { const v = parseFloat((document.getElementById('drawBuf') || {}).value); return isFinite(v) && v > 0 ? Math.min(v, 2000) : 0; };
+    function drawUI() {   // enable / highlight the tool buttons and show the right hint
+      bar.querySelectorAll('[data-tool]').forEach(b => { b.disabled = !sel(); b.classList.toggle('active', b.dataset.tool === dTool); });
+      bar.querySelectorAll('[data-act="finish"],[data-act="undo"]').forEach(b => { b.style.display = (dTool === 'polygon' || dTool === 'line') ? '' : 'none'; });
+      bar.querySelector('[data-act="clear"]').style.display = (dRaw || dTool) ? '' : 'none';
+      if (!sel()) drawNote('', 'Choose the <b>GN Division</b> – the map zooms to it, then draw the area covered by the activity.');
+      else if (dTool) drawNote('', TOOL_TIPS[dTool]);
+      else if (!dRes) drawNote('', 'Pick a tool (<b>Circle</b>, <b>Box</b>, <b>Shape</b> or <b>Line</b>) and draw the area covered inside <b>' + esc(sel()) + '</b>.');
+    }
+    function buildShape() {
+      if (!dRaw || typeof turf === 'undefined') return null;
+      const b = drawBuf();
+      try {
+        if (dRaw.type === 'circle') return turf.circle(dRaw.center, (dRaw.radius + b) / 1000, { steps: 64, units: 'kilometers' });
+        if (dRaw.type === 'line') return turf.buffer(turf.lineString(dRaw.coords), Math.max(b, 5) / 1000, { units: 'kilometers', steps: 8 });
+        const p = turf.polygon([dRaw.ring]);
+        return b > 0 ? turf.buffer(p, b / 1000, { units: 'kilometers', steps: 8 }) : p;
+      } catch (e) { console.error('Shape build failed:', e); return null; }
+    }
+    function shapeLayers() {
+      if (dLayer) { dLayer.remove(); dLayer = null; }
+      if (dRawLayer) { dRawLayer.remove(); dRawLayer = null; }
+    }
+    function renderShape() {
+      shapeLayers();
+      dRes = buildShape();
+      if (!dRes) { drawUI(); return; }
+      const col = actColor(typ());
+      dLayer = L.geoJSON(dRes, { interactive: false, style: { color: col, weight: 3, fillColor: col, fillOpacity: 0.3 } }).addTo(rmap);
+      const rawF = dRaw.type === 'circle' ? turf.circle(dRaw.center, dRaw.radius / 1000, { steps: 64, units: 'kilometers' }) : dRaw.type === 'line' ? turf.lineString(dRaw.coords) : turf.polygon([dRaw.ring]);
+      dRawLayer = L.geoJSON(rawF, { interactive: false, style: { color: '#0f172a', weight: 2, dashArray: '5 5', fill: false } }).addTo(rmap);
+      const m2 = turf.area(dRes), area = m2 >= 10000 ? (m2 / 10000).toFixed(2) + ' ha' : Math.round(m2) + ' m²';
+      const names = { circle: 'Circle', box: 'Box', polygon: 'Shape', line: 'Line' };
+      drawNote('ok', '<i class="bi bi-check-circle-fill text-success"></i> Area marked: <b>' + names[dRaw.type] + '</b>' + (drawBuf() || dRaw.type === 'line' ? ' + ' + (dRaw.type === 'line' ? Math.max(drawBuf(), 5) : drawBuf()) + ' m buffer' : '') + ' ≈ <b>' + area + '</b>. Change the buffer or draw again to replace it.');
+      drawUI();
+    }
+    function stopTool() {
+      if (dHandler) { try { dHandler.disable(); } catch (e) { /* already off */ } dHandler = null; }
+      dTool = '';
+    }
+    function startTool(tool) {
+      if (!sel() || !L.Draw) return;
+      const same = dTool === tool; stopTool();
+      if (same) { drawUI(); return; }   // pressing the active tool again switches it off
+      dTool = tool;
+      const so = { color: '#1d4ed8', weight: 2, fillOpacity: 0.15 };
+      if (tool === 'circle') dHandler = new L.Draw.Circle(rmap, { shapeOptions: so, showRadius: true, metric: true });
+      else if (tool === 'box') dHandler = new L.Draw.Rectangle(rmap, { shapeOptions: so, showArea: false, metric: true });
+      else if (tool === 'polygon') dHandler = new L.Draw.Polygon(rmap, { shapeOptions: so, showArea: false, metric: true });
+      else dHandler = new L.Draw.Polyline(rmap, { shapeOptions: { color: '#1d4ed8', weight: 4 }, metric: true });
+      dHandler.enable();
+      const bi = document.getElementById('drawBuf'); if (bi && !dBufTouched) bi.value = tool === 'line' ? 20 : 0;   // a line needs a width to become an area
+      drawUI();
+    }
+    function clearShape() {
+      stopTool(); shapeLayers(); dRaw = null; dRes = null; dBufTouched = false;
+      drawUI();
+    }
+    function getShape() {
+      if (!dRes || !dRaw) return null;
+      const geom = JSON.stringify(dRes.geometry, (k, v) => typeof v === 'number' ? Math.round(v * 1e6) / 1e6 : v);   // stored as text (Firestore has no nested arrays)
+      return { shape: geom, shapeType: dRaw.type, bufferM: dRaw.type === 'line' ? Math.max(drawBuf(), 5) : drawBuf(), areaM2: Math.round(turf.area(dRes)) };
+    }
     bar.addEventListener('click', e => {
       const t = e.target.closest('[data-tool]'), a = e.target.closest('[data-act]');
       if (t) startTool(t.dataset.tool);
@@ -489,11 +480,10 @@
       else if (a && a.dataset.act === 'clear') clearShape();
     });
     document.getElementById('drawBuf').addEventListener('input', () => { dBufTouched = true; if (dRaw) renderShape(); });
-    const ts = typeSelect(); if (ts) ts.addEventListener('change', () => { if (dRes) renderShape(); });
     if (!L.Draw || typeof turf === 'undefined') {
       bar.querySelectorAll('button,input').forEach(x => { x.disabled = true; });
       drawNote('warn', 'Drawing tools could not load (check the internet connection and reload).');
-      return false;
+      return { getShape: () => null, clear() {}, ui() {}, recolor() {} };
     }
     // Leaflet.draw 1.0.4 has a bug in its area text with newer Leaflet; use our own text
     if (L.GeometryUtil) L.GeometryUtil.readableArea = a => a >= 10000 ? (a / 10000).toFixed(2) + ' ha' : Math.round(a) + ' m²';
@@ -506,7 +496,23 @@
       renderShape();
     });
     rmap.on(L.Draw.Event.DRAWSTOP, () => { dHandler = null; dTool = ''; drawUI(); });
-    return true;
+    drawUI();
+    return { getShape, clear: clearShape, ui: drawUI, recolor: () => { if (dRes) renderShape(); } };
+  }
+  function anchorBar(anchor) {   // the tool bar HTML (inserted just above the map)
+    anchor.insertAdjacentHTML('beforebegin',
+      '<div id="drawBar">' +
+        '<div class="btn-group btn-group-sm" role="group">' +
+          '<button type="button" class="btn btn-outline-primary" data-tool="circle"><i class="bi bi-circle me-1"></i>Circle</button>' +
+          '<button type="button" class="btn btn-outline-primary" data-tool="box"><i class="bi bi-square me-1"></i>Box</button>' +
+          '<button type="button" class="btn btn-outline-primary" data-tool="polygon"><i class="bi bi-pentagon me-1"></i>Shape</button>' +
+          '<button type="button" class="btn btn-outline-primary" data-tool="line"><i class="bi bi-slash-lg me-1"></i>Line</button>' +
+        '</div>' +
+        '<label class="small mb-0 d-flex align-items-center gap-1" title="Extra width added around the drawn shape (a line becomes a strip this wide on each side)">Buffer <input type="number" id="drawBuf" class="form-control form-control-sm" min="0" max="2000" step="5" value="0"> m</label>' +
+        '<button type="button" class="btn btn-sm btn-success" data-act="finish" style="display:none">Finish</button>' +
+        '<button type="button" class="btn btn-sm btn-outline-secondary" data-act="undo" style="display:none">Undo point</button>' +
+        '<button type="button" class="btn btn-sm btn-outline-danger" data-act="clear" style="display:none">Clear</button>' +
+      '</div><div id="drawNote"></div>');
   }
 
   // ----- selection (GN division chosen in the form) -----
@@ -524,14 +530,14 @@
     if (!rmap || !mode) return;
     name = name || '';
     if (name === rSel && !rPin && !dRaw) return;
-    if (name !== rSel) { clearPin(); clearShape(); }
+    if (name !== rSel) { clearPin(); if (drawer) drawer.clear(); }
     rSel = name;
     const cont = rmap.getContainer();
     cont.classList.toggle('dg-pinning', mode === 'pin' && !!rSel);
     cont.classList.toggle('dg-nopath', mode === 'draw' && !!rSel);   // while drawing, clicks must reach the map, not the hidden GN shapes
     refreshRiskMap();
     fitView();
-    if (mode === 'pin') pinHint(); else drawUI();
+    if (mode === 'pin') pinHint(); else if (drawer) drawer.ui();
   }
   function initRiskMap() {
     const box = document.getElementById('riskMap');
@@ -570,12 +576,15 @@
         });
         document.getElementById('pinBar').addEventListener('click', e => { if (e.target.closest('[data-pin-clear]')) clearPin(); });
       }
-      if (drawMode) { initDrawUI(box); drawUI(); }
+      if (drawMode) {
+        drawer = createDrawTool({ map: rmap, anchor: box, getSel: () => rSel, getType: () => { const t = typeSelect(); return t ? t.value : ''; } });
+        const ts = typeSelect(); if (ts) ts.addEventListener('change', () => drawer.recolor());
+      }
       if (selMode) {
         const sel = document.querySelector('select[data-gn]');
         if (sel) {
           sel.addEventListener('change', () => setRiskSel(sel.value));
-          if (sel.form) sel.form.addEventListener('reset', () => setTimeout(() => { clearPin(); clearShape(); setRiskSel(''); }, 0));
+          if (sel.form) sel.form.addEventListener('reset', () => setTimeout(() => { clearPin(); if (drawer) drawer.clear(); setRiskSel(''); }, 0));
         }
       }
       refreshRiskMap();
@@ -618,7 +627,7 @@
       refreshRiskMap();
     });
   }
-  window.DG = { GN_LIST, dateStr, esc, officer, addOfficerPrompt, addActivityPrompt, fillActivityTypes, renderRiskPanel, enhanceSelect, onData, pinIcon, setupBase, refreshMap, actColor, getShape, clearShape, autoPlaceMap,
+  window.DG = { GN_LIST, dateStr, esc, officer, addOfficerPrompt, addActivityPrompt, fillActivityTypes, renderRiskPanel, enhanceSelect, onData, pinIcon, setupBase, refreshMap, actColor, createDrawTool, getShape: () => drawer ? drawer.getShape() : null, clearShape: () => { if (drawer) drawer.clear(); }, autoPlaceMap,
     getPin: () => rPin ? { lat: rPin.lat, lng: rPin.lng } : null, clearPin,
     db: { cases, acts, officers: officersList, activityTypes: activityTypesList, add, remove, update, seedDemo, removeDemo } };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
